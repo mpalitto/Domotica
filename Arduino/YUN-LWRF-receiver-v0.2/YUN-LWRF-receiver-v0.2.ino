@@ -23,6 +23,7 @@ unsigned int E = 0; //end microseconds counter
 unsigned int bitCode = 0;
 unsigned int syncP = 0;
 unsigned int syncL = 0;
+unsigned long timeMillis;
 //String hex2bin[16] = {"0000","0001","0010","0011","0100","0101","0110","0111","1000","1001","1010","1011","1100","1101","1110","1111"};
 //String toHEX[16] = {"0","1","2","3","4","5","6","7","8","9","A","B","C","D","E","F"};
  
@@ -45,13 +46,19 @@ void setup(){
 }
  
 void loop(){
+  //Serial.println('listening to incoming RF signal...');
   listenForLightWaveRFsignal();
 
-  
+  timeMillis = millis();
+  char millisSTR[16];
+  sprintf(millisSTR," %lu",timeMillis);
+  Serial.print(timeMillis);
+  Serial.print(": ");
+
   Process p;                          // Create a process and call it "p"
   p.begin("sh");                      // shell command
-  p.addParameter("/root/command.sh"); // found in the command.sh
-  p.addParameter(dataString);
+  p.addParameter("/root/send2HomeServer.sh"); // found in the command.sh
+  p.addParameter(dataString + millisSTR );
   p.run();                            // Run the process and wait for its termination
 
 
@@ -191,7 +198,7 @@ void listenForLightWaveRFsignal() {
        dataString += "1";
        if(S == 3) dataString += "0";
    }
-   Serial.println(dataString);
+   //Serial.println(dataString);
    int charPos = 6;
    for(int j=1; j<81; j=j+9) {
       bitCode = 0x80;
@@ -199,14 +206,14 @@ void listenForLightWaveRFsignal() {
       for(int i=j+7; i>=j; i--) {
          //process the 1 bit
          if(dataString.charAt(i) == '1') R += bitCode; 
-         Serial.print(dataString.charAt(i));
+         //Serial.print(dataString.charAt(i));
          bitCode = bitCode>>1;
     }
-    Serial.print(" - "); Serial.println(byte2nibble(R));
+    //Serial.print(" - "); Serial.println(byte2nibble(R));
     dataString.setCharAt(--charPos, byte2nibble(R));
     if(charPos == 0) charPos = 10;
    }
-   Serial.print(E); Serial.print(": "); Serial.print(dataBIT); Serial.print(": ");
+   //Serial.print(E); Serial.print(": "); Serial.print(dataBIT); Serial.print(": ");
    dataString.setCharAt(10, '-');
    dataString.remove(11);
    dataString.replace("1000-", "0100");
@@ -215,7 +222,7 @@ void listenForLightWaveRFsignal() {
    dataString.replace("12F2-", "1003");
    dataString.replace("13F2-", "1004");
    dataString.replace("14F2-", "1005");
-   Serial.println(dataString);
+   //Serial.println(dataString);
    //dataString = "";
 //}   
    E = 0;

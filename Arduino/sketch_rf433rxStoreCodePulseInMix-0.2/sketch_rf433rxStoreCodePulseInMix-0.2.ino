@@ -1,10 +1,10 @@
 /* 
  *  
   433 MHz RF REMOTE REPLAY sketch 
-     Written by ScottC 24 Jul 2014
+     Written by Matteo Palitto
      Arduino IDE version 1.0.5
-     Website: http://arduinobasics.blogspot.com
-     Receiver: XY-MK-5V      Transmitter: FS1000A/XY-FST
+     Website: github.com
+     Receiver: 5V      Transmitter: 5V
      Description: Use Arduino to receive and transmit RF Remote signal          
  ------------------------------------------------------------- */
  #define rfReceivePin 7     //RF Receiver data pin = Digital pin 7

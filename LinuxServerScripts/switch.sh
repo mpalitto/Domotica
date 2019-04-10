@@ -61,6 +61,9 @@ tail -n0 -f /root/tmp | while read line; do
   if [ "${line:0:6}" == "0A1400" ] && [ ! "$(grep $SWcode /root/.lastSwitch)" ]; then
      echo "$SWcode" >> /root/.lastSwitch; (sleep 2 && grep -v $SWcode /root/.lastSwitch > /root/.lastSwitch.tmp; mv /root/.lastSwitch.tmp /root/.lastSwitch) &
 
+    SWC=${SWcode:0:5}
+    SWN=${Switch[${SWcode:0:5}]}
+    echo "now serving: $SWC / $SWN"
     case ${Switch[${SWcode:0:5}]} in
    
     S/C-INGRESSO)
