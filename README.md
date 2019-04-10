@@ -9,7 +9,11 @@ Domotica system using Arduino + sONOFF-RF + LWRF mood switches + Linux Server
 * Linux Server
 
 ## Architecture:
-''' LWRF button --> ARDUINO YUN + RF-RX --> LAN --> Linux Server --> Arduino + RF-TX --> sONOFF rele' '''
+``` LWRF button --> ARDUINO YUN + RF-RX --> LAN --> Linux Server --> Arduino + RF-TX --> sONOFF relay ```
 
-## Code:
-ARDUINO YUN:
+## Directory Structure:
+``Arduino:`` (the code for programming the 2 ARDUINO boards + code for the nodeMCU ESP8266 RF receivers)
+ * --> YUN-LWRF-receiver-v0.2: (Files for the ARDUINO YUN board used as a LW mood wall switches RF receiver)
+ * --> -->  YUN-LWRF-receiver-v0.2.ino: (the ARDUINO code implementing the RF receiver logic)
+ * --> --> send2HomeServer.sh: (the Shell Script used for sending the received codes to Home Server)
+ * --> --> conn2HomeServer.sh: (establishes connection to Home Server over socket)
