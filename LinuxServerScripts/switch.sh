@@ -8,6 +8,7 @@
 #for generating case skeleton
 #for name in ${switchName[@]}; do echo $name; done | sed 's/\(.*\)$/\1)\n  echo -n "\1 "\n  case ${SWcode:5} in\n    0)\n      echo "Button 0"\n      ;;\n    1)\n      echo "Button 1"\n      ;;\n    2)\n      echo "Button 2"\n      ;;\n    3)\n      echo "Button 3"\n      ;;\n    4)\n      echo "Button 4"\n      ;;\n    5)\n      echo "Button 5"\n      ;;\n    esac/'
 
+if [ $(pgrep switch.sh | wc -w) -gt 1 ]; then exit; fi //verify process isn't already running
 #legge configurazione da file e genera un array associativo
 unset Switch
 declare -A Switch #associative array for easy code reading
