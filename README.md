@@ -1,3 +1,60 @@
+# sONOFF cloud Proxy
+## OBJECTIVE:
+sONOFF cloud server and APP are very useful for operating the relay using WIFI, but it would be nice to operate the relay through WIFI even when connection to the internet is not available.
+
+The idea is to replace the cloud server with a local one without the sONOFF relay knowing it.
+
+## PROBLEM:
+The relays during setup time get the address of the cloud server to connect to.
+
+when the sONOFF is turned on, it connects to the WIFI network and then will attempt to connect to the cloud server. If not connection to the cloud server is successful, the relay cannot be operated using WIFI.
+
+## SOLUTION:
+* have all sONOFF connect to custom WIFI AP which is implemented by using a low cost Linux board and a WIFI usb adapter.
+* use IPTABLES to redirect received traffic to local address and port.
+* have a local server running on the Linux board to serve the sONOFF and give a local interface to switch the relay.
+* In order to keep the cellphone functionality in the case of available internet connection, we can simulate the sONOFF client and connect to the cloud server. This will allow the cloud server to send command which we can then forward to the sONOFF of interest, when sONOFF sends status to server (local) we forward it to the cloud server.
+
+## SERVER IMPLEMENTATION:
+### ANALISYS:
+the following link shows the protocol between the cloud server and the sONOFF device:
+http://blog.nanl.de/2017/05/sonota-flashing-itead-sonoff-devices-via-original-ota-mechanism/
+
+from which we can identify 4 phases:
+1. DISPATCH
+2. WEBSOCKET
+3. REGISTRATION
+4. COMMANDS
+
+### PHASE 1: DISPATCH
+sONOFF send a POST HTTPS request to eu-disp.coolkit.cc
+from which receives the IP and PORT for the WebSocket (WS) server.
+
+### PHASE 2: Establish WS connection
+according to the websocket standard.
+
+### PHASE 3: REGISTRATION
+Once the WS is established, a sequence of WS messages are exchanged to register the sONOFF device with the server (see above link for details)
+
+### PHASE 4: COMMANDS
+in this state the sONOFF device is waiting for commands from server, and sending periodic state updates.
+
+## CONSIDERATIONs:
+Since we want to use the same LINUX computer for DISPATCH server and for WS server, we need to necessarily use 2 different ports for the 2 servers.
+DISPATCH uses port 443 or 8080 depending on the sONOFF version.
+We can then use 8443 for the local DISPATCH server, thus using IPTABLES  we need to redirect ports 443 and 8080 to local port 8443.
+Our local server will then give the IP address of the local Linux computer and the PORT (for example 8888) where we have our WS server listening.
+
+For each sONOFF connection we will need to store the deviceID. On 1st use of each deviceID we can associate a device name that can be used for easier reference.
+The association can be stored in a file. 
+
+For each sONOFF a status must be maintained in memory.
+
+Each sONOFF have settings that can be changed like the PowerON state and timers.
+These will need to be stored in file.
+
+A regular socket will be used to get commands from command-line.
+
 # Domotica
 Domotica system using Arduino + sONOFF-RF + nodeMCU + LWRF mood switches + Linux Server 
 
