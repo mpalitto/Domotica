@@ -43,7 +43,10 @@ in this state the sONOFF device is waiting for commands from server, and sending
 Since we want to use the same LINUX computer for DISPATCH server and for WS server, we need to necessarily use 2 different ports for the 2 servers.
 DISPATCH uses port 443 or 8080 depending on the sONOFF version.
 We can then use 8443 for the local DISPATCH server, thus using IPTABLES  we need to redirect ports 443 and 8080 to local port 8443.
-Our local server will then give the IP address of the local Linux computer and the PORT (for example 8888) where we have our WS server listening.
+
+The local DISPATCH server then will reply to the device by sending its own IP address 192.168.1.11 and port 8433 as the listening port for creating a WS connection. Thus the DISPATCH server and the WS server are really 2 aspects of the the same server listening on port 8443.
+
+Our local server will then give the IP address of the local Linux computer and the PORT (for example 8888) where we have our WS server listening to each sONOFF device/.
 
 For each sONOFF connection we will need to store the deviceID. On 1st use of each deviceID we can associate a device name that can be used for easier reference.
 The association can be stored in a file. 
