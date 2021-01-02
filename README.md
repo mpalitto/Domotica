@@ -42,6 +42,18 @@ in this state the sONOFF device is waiting for commands from server, and sending
 ## CONSIDERATIONs:
 Since we want to use the same LINUX computer for DISPATCH server and for WS server, we need to necessarily use 2 different ports for the 2 servers.
 DISPATCH uses port 443 or 8080 depending on the sONOFF version.
+Our local sONOFF server will listen for HTTP requests on port 8000 and HTTPS requests on port 8181.
+
+Thus our IPTABLES rules for the DISPATCH server will be:
+```
+iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 8000
+iptables -t nat -A PREROUTING -p tcp --dport 443 -j REDIRECT --to-port 8181
+```
+(Logica di attraversamento di iptables)[http://openskill.info/infobox.php?ID=1300]
+(IPTABLES info di base)[https://wiki.archlinux.org/index.php/Iptables_(Italiano)#tabelle]
+
+These rules will redirect all packets coming to the local sONOFF server (which works as AP for the sONOFF devices) to the respective ports for unsecured (legacy devices) or secure requests.
+
 We can then use 8443 for the local DISPATCH server, thus using IPTABLES  we need to redirect ports 443 and 8080 to local port 8443.
 
 The local DISPATCH server then will reply to the device by sending its own IP address 192.168.1.11 and port 8433 as the listening port for creating a WS connection. Thus the DISPATCH server and the WS server are really 2 aspects of the the same server listening on port 8443.
@@ -56,7 +68,13 @@ For each sONOFF a status must be maintained in memory.
 Each sONOFF have settings that can be changed like the PowerON state and timers.
 These will need to be stored in file.
 
-A regular socket will be used to get commands from command-line.
+A regular socket(port 9999) will be used to get commands from command-line.`echo list | nc -w 1 localhost 9999` (where `list` is the command to be sent in this case). available commands:
+1. list - list connected sONOFF devices
+2. name - `name devID devName` it gives an alias|name that can be used to give commands to the sONOFF device
+3. switch - `switch deviceID|alias on|off` switch sONOFF device ON or OFF
+
+(nodejs-websocket)[https://github.com/sitegui/nodejs-websocket] is A nodejs module for websocket server and client
+which is what I have used for this implementation.
 
 # Domotica
 Domotica system using Arduino + sONOFF-RF + nodeMCU + LWRF mood switches + Linux Server 
