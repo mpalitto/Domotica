@@ -1,0 +1,32 @@
+#/etc/network/interfaces
+## ifupdown has been replaced by netplan(5) on this system.  See
+# /etc/netplan for current configuration.
+# To re-enable ifupdown on this system, you can run:
+#    sudo apt install ifupdown
+#
+auto eth0
+iface eth0 inet manual
+  # address 192.168.1.2
+  # netmask 255.255.255.0
+  # gateway 192.168.1.254
+
+auto wlxc4e9840b09a5
+iface wlxc4e9840b09a5 inet manual
+
+auto br0
+iface br0 inet static
+    bridge_ports wlxc4e9840b09a5 eth0
+    address 192.168.1.11
+    network 192.168.1.0
+    netmask 255.255.255.0
+    broadcast 192.168.1.255
+    gateway 192.168.1.1
+    dns-nameservers 8.8.8.8 192.168.1.1
+# pre-up ifconfig eth0 0.0.0.0 up
+# pre-up ifconfig wlxc4e9840b09a5 0.0.0.0 up
+# pre-up brctl addbr br0
+# pre-up brctl addif br0 eth0
+# post-down ifconfig wlxc4e9840b09a5 0.0.0.0 down
+# post-down ifconfig eth0 0.0.0.0 down
+# post-down brctl delif br0 eth0
+# post-down brctl delbr br0
