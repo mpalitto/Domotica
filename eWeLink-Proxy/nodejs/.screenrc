@@ -1,0 +1,15 @@
+# Start a new screen session with a title
+screen -t "SERVER" node sONOFFserver.mjs
+
+# Split the screen horizontally and create a new window
+split
+focus
+screen -t "CMD" 
+stuff 'source UI.sh'
+
+# Resize the new region to have 5 lines
+# resize -h 5
+
+# Save layout to allow detaching and reattaching while keeping the layout
+layout save default
+
