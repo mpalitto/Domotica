@@ -6,17 +6,48 @@ for understanding the context of this implementarion
 ### Working so far
 1. succefully implements the LOCAL server
 2. offers command line interface for controlling the sONOFF devices ON or OFF
+3. run server into a screen session
 
 ### Work in Progress
 
 ### Work Planned 
 1. Proxy functionality
-2. run server into a screen session
-3. implement timer
+2. implement timer
 
 ### New ideas
 1. define groups of devices
 2. pretend someone home routines
+3. implement command to list all new devices (not alias assigned yet)
+
+## Installation
+1. Install screen `sudo apt install screen`
+2. Install hostapd `sudo apt install hostapd`
+3. Install dhcpd `sudo apt install dhcp`
+4. configure hostapd and dhcpd
+5. clone this repository 
+
+## Usage
+1. `cd ~/Domotica/eWeLink-Proxy/nodejs`
+2. `source run-screen.sh`
+
+This will open a `screen` session divided into a top pane and a bottom one.
+
+The TOP pane is where the server script will be started and shows the server output.
+
+The BOTTOM pane is where the User Interface is found.
+
+### User Interface
+it is a regular bash shell where a new command `sonoff` will be available, by using which, it is possible to interact with the Server.
+
+Available `sonoff` options and their syntax:
+
+---
+
+1. switch <deviceID|alias> <on|off>: Switches the device on or off by their alias or deviceID.  
+2. name <deviceID> <devAlias>: Assigns an alias to a device.
+3. list [online|offline|on|off|all]: Lists devices based on status filters.
+4. ? : Lists all available commands and their syntax.
+
 
 ## Files 
 ### <p align="center">System files</p>

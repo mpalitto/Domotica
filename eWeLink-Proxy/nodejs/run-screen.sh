@@ -13,11 +13,6 @@ iptables -t nat -A PREROUTING -p tcp --dport 443 -j DNAT --to-destination 192.16
 iptables -t nat -A PREROUTING -p tcp --dport 8081 -j DNAT --to-destination 192.168.200.1:8888
 iptables -t nat -A PREROUTING -p tcp --sport 8081 -j DNAT --to-destination 192.168.200.1:8888
 
-# # remove previous screen session if exists
-# screen -S "sONOFF-Server" -X quit
-# # Start a new screen session for the server and UI
-# screen -mS "sONOFF-Server" -c .screenrc
-
 SESSION_NAME="sONOFF-Server"
 
 # Check if a screen session with the same name already exists
