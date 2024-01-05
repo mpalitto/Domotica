@@ -49,6 +49,18 @@ Available `sonoff` command options and their syntax:
 3. list [online|offline|on|off|all]: Lists devices based on status filters.
 4. ? : Lists all available commands and their syntax.
 
+---
+
+NOTE:
+Once the program is running, it is possible to exit and go back to the Linux Shell by "Ctrl-a d".
+
+This will detach the `screen` session but not stop it.
+
+To re-attach to the screen session it's enogh typing `source run-screen.sh` and press ENTER 2x.
+
+The server will continue running as a daemon process even after the Linux Shell is closed.
+
+The user will have the option to restart the server insetead of re-attach to the running one.
 
 ## Files 
 ### <p align="center">System files</p>
