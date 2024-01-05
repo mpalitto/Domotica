@@ -31,6 +31,7 @@ for understanding the context of this implementarion
 2. `source run-screen.sh`
 
 This will open a `screen` session divided into a top pane and a bottom one.
+![image](https://github.com/mpalitto/Domotica/assets/7433768/8a228df7-1835-42e5-8a4a-997a5ece0ef5)
 
 The TOP pane is where the server script will be started and shows the server output.
 
@@ -39,9 +40,9 @@ The BOTTOM pane is where the User Interface is found.
 ### User Interface
 it is a regular bash shell where a new command `sonoff` will be available, by using which, it is possible to interact with the Server.
 
-Available `sonoff` options and their syntax:
-
 ---
+
+Available `sonoff` command options and their syntax:
 
 1. switch <deviceID|alias> <on|off>: Switches the device on or off by their alias or deviceID.  
 2. name <deviceID> <devAlias>: Assigns an alias to a device.
