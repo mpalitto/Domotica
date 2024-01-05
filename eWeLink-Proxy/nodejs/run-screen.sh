@@ -13,11 +13,15 @@ iptables -t nat -A PREROUTING -p tcp --dport 443 -j DNAT --to-destination 192.16
 iptables -t nat -A PREROUTING -p tcp --dport 8081 -j DNAT --to-destination 192.168.200.1:8888
 iptables -t nat -A PREROUTING -p tcp --sport 8081 -j DNAT --to-destination 192.168.200.1:8888
 
+# Start a new screen session for the server and UI
+# Commands for setting the screen layout and will be executed after a delay to ensure the screen session is ready
+
 # Start a new screen session where to run both the Server and the User Interface
-# However in order to get the screen layout we need to issue the following commands
+# However in order to get the screen layout we need to issue some commands o the new session
 # I am going to execute the commands on a separate background process that will wait 
-# before starting to execute the commands so that I can start the screen session
-# and the command be issued once the session is up and running
+# before starting to execute the commands, so that, I can start first the screen session
+# and the commands will be issued once the session is up and running
+# NOTE: I am sure there is a better way to do this... maybe using (.screenrc file)?
 bash <<EOF > /dev/tty &
 sleep 3 # wait 3 secs for the new screen session be up and running
 # Start a new screen session with title
@@ -51,3 +55,14 @@ EOF
 
 # Start a new screen session
 screen -S "sONOFF-Server"  -m 
+
+# Note: the "-m" option forces an new top level screen session even if it was started with in
+# screen session
+# 
+# without "-m" option
+# ├── screen 1
+# │    └── screen 2
+# 
+# with "-m" option
+# ├── screen 1
+# ├── screen 2
