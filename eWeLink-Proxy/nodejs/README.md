@@ -20,11 +20,12 @@ for understanding the context of this implementarion
 3. implement command to list all new devices (not alias assigned yet)
 
 ## Installation
-1. Install screen `sudo apt install screen`
+1. Install GNU screen `sudo apt install screen`
 2. Install hostapd `sudo apt install hostapd`
 3. Install dhcpd `sudo apt install dhcp`
 4. configure hostapd and dhcpd
-5. clone this repository 
+5. configure the Linux box iptables
+6. [clone this repos' sub-folder](https://github.com/mpalitto/Domotica/wiki/clone-only-a-specific-subdirectory-from-a-GitHub-repository)
 
 ## Usage
 1. `cd ~/Domotica/eWeLink-Proxy/nodejs`
