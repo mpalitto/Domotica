@@ -1,5 +1,5 @@
 # Start a new screen session with a title
-screen -t "SERVER" node sONOFFserver.mjs
+screen -t "SERVER" node proxy.mjs
 
 # Split the screen horizontally and create a new window
 split

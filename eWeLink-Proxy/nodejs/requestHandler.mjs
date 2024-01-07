@@ -77,7 +77,9 @@ function handleDispatchRequest(req, res, secure) {
 
 // Function to handle WebSocket connections
 export function handleWebSocketConnection(ws, req) {
-    console.log('New WebSocket connection from:', req.connection.remoteAddress);
+    let deviceIP = req.connection.remoteAddress;
+    ws['IP'] = deviceIP;
+    console.log('New WebSocket connection from:', ws['IP']);
 
     // this section implements ping-pong between server and client 
     // client sends PING every < 140s
@@ -92,41 +94,23 @@ export function handleWebSocketConnection(ws, req) {
       console.log(`PING received from ${connectionId}: Time between pings: ${timeDifference} secs`);
       prevPingTime = currentTime;
     
-      // Close connection if more than 180 secs from last PING
+      // Close connection if more than 300 secs from last PING
       // Clear existing timeout if it exists
-        if (wsTimeout) {
-            clearTimeout(wsTimeout);
-        }
+        // if (wsTimeout) {
+        //     clearTimeout(wsTimeout);
+        // }
 
-        // Set a new timeout for 180 seconds
-        wsTimeout = setTimeout(() => {
-            console.log('WebSocket connection closed due to inactivity.');
-            ws.terminate(); // Close the WebSocket connection
-        }, 180000); // 180 seconds in milliseconds
+        // // Set a new timeout for 300 seconds
+        // wsTimeout = setTimeout(() => {
+        //     console.log('WebSocket connection closed due to inactivity.');
+        //     ws.terminate(); // Close the WebSocket connection
+        // }, 300000); // 300 seconds in milliseconds
     });
-
-    // in order to verify if connection is still alive
-    // let consecutiveMissedPongs = 0;
-    // ws.on('pong', () => {
-    //     // Handle received pong frames
-    //     console.log('Received pong frame');
-    //     consecutiveMissedPongs = 0;
-    // });
-    
-    // const pingInterval = setInterval(() => {
-    //     ws.ping(); // Send ping frames at regular intervals
-    //     consecutiveMissedPongs++;
-    //     if (consecutiveMissedPongs >= 3) {
-    //         clearInterval(pingInterval);
-    //         console.log('Closing connection due to consecutive missed pongs');
-    //         ws.terminate();
-    //     }
-    // }, 1000); // Ping interval: every 1 seconds
 
     // this section handels other regular socket's events
       
     // Setting up the WebSocket for message handling
-    handleMessage.setWebSocket(ws);
+    handleMessage.setWebSocket(ws, deviceIP);
 
     // Handling WebSocket errors
     ws.on('error', console.error);

@@ -11,7 +11,7 @@
 // actions: Stores action handlers.
 // deviceid: Identifier for the device.
 // msg: Placeholder for received messages.
-// uuid: A default UUID for identification purposes.
+
 // Methods:
 
 // setWebSocket: Sets the WebSocket connection.
@@ -29,28 +29,26 @@
 
 
 // const sONOFF = {};
-import { sONOFF } from './sharedVARs.js'
+import { sONOFF, proxyEvent, proxyAPIKey } from './sharedVARs.js'
 import { appendFile } from 'fs';
 
 export const handleMessage = {
-    ws: null,
     actions: {},
-    deviceid: '',
-    msg: '',
-    uuid: 'fe8ce2c4-4359-4c2e-ae3f-5ed0c0b70272',
+    connectionid: {},
+    
   
-    setWebSocket: function (webSocket) {
-      this.ws = webSocket;
+    setWebSocket: function (webSocket, deviceIP) {
+      this.connectionid[deviceIP] =  { ws: webSocket, msg: '' };
     },
   
     on: function (action, actionHandler) {
       this.actions[action] = actionHandler;
     },
   
-    handleAction: function (action) {
+    handleAction: function (action, ws) {
       const actionHandler = this.actions[action] || this.actions.defaultAction;
-      console.log('running: actionHandler');
-      actionHandler();
+      // console.log('running: actionHandler');
+      actionHandler(ws);
     },
   
     defaultAction: function () {
@@ -60,73 +58,86 @@ export const handleMessage = {
     },
   
     msgInit: function (buffer, ws) {
-      this.ws = ws;
-      handleMessage.msg = buffer.toString();
-      console.log('Received WebSocket message:', handleMessage.msg);
+      ws['msg'] = buffer.toString();
+      console.log('\n\nWS message ' + ws['IP'] + ' | ' + ws['deviceid'] + '--> Proxy:', ws['msg']);
+
   
       try {
-        handleMessage.msg = JSON.parse(handleMessage.msg);
-        handleMessage.deviceid = handleMessage.msg['deviceid'];
-        // handleMessage.connections.set(handleMessage.deviceid, ws);
-        if (handleMessage.msg['error'] && handleMessage.msg['error'] !== '0') {
+        let msgObj = JSON.parse(ws['msg']);
+        if(msgObj['action'] == 'register') {
+          ws['deviceid'] = msgObj['deviceid'];
+          sONOFF[ws['deviceid']]["conn"] = {};
+          sONOFF[ws['deviceid']]["conn"]['apikey'] = msgObj['apikey'];
+          sONOFF[ws['deviceid']]["conn"]['ws'] = ws;
+          sONOFF[ws['deviceid']]["state"] = 'Registering';
+        }
+        if (! sONOFF[ws['deviceid']]["isOnLine"]) sONOFF[ws['deviceid']]["isOnLine"] = false;
+        console.log('device: ' + ws['deviceid'] + ' is now OnLine: ' + sONOFF[ws['deviceid']]["isOnLine"]);
+        if (sONOFF[ws['deviceid']]["isOnLine"]) {
+          proxyEvent.emit('messageFromDevice', ws['deviceid'], ws['msg']);
+          if(msgObj['action'] == 'update') {
+            sONOFF[ws['deviceid']]['state'] = msgObj['params']['switch'];
+          }
+        }
+        // handleMessage.connections.set(ws['deviceid'], ws);
+        if (msgObj['error'] && msgObj['error'] !== '0') {
           console.log('PREV.CMD ERROR received');
           return 0;
         } else {
           console.log('PREV.CMD SUCCESSFULLY received');
         }
-        if(handleMessage.msg.action) handleMessage.handleAction(handleMessage.msg.action);
+        if(msgObj.action) handleMessage.handleAction(msgObj.action, ws);
       } catch (error) {
         console.error('Error parsing message:', error);
       }
-      return handleMessage.deviceid; // return deviceID to be used as connectionId
+      return ws['deviceid']; // return deviceID to be used as connectionId
     },
   };
   
-  handleMessage.on('register', () => {
+  handleMessage.on('register', (ws) => {
     console.log('REGISTRATION request received... sending reply');
-    const response = '{ "error": 0, "deviceid": "' + handleMessage.deviceid + '", "apikey": "' + handleMessage.uuid + '", "config": { "hb": 1, "hbInterval": 145 } }';
-    console.log('>>>: ' + response);
-    handleMessage.ws.send(response);
+    const response = '{ "error": 0, "deviceid": "' + ws['deviceid'] + '", "apikey": "' + proxyAPIKey + '", "config": { "hb": 1, "hbInterval": 145 } }';
+    // console.log('>>>: ' + response);
+    console.log('WS message Proxy --> ' + ws['IP'] + ' | ' + ws['deviceid'] +  ': ', response);
+    ws.send(response);
     // check if the registring device is one of known devices
-    if (!sONOFF[handleMessage.deviceid]) { // 1st time we've seen this device
-      sONOFF[handleMessage.deviceid] = {};
-      sONOFF[handleMessage.deviceid]["alias"] = 'new-' + handleMessage.deviceid; // provide a new temporary alias
-      console.log('device ' + handleMessage.deviceid + ' is signing-in and is not on the known devices list. Check sONOFF.cmd file for new devices and replace its temporary given name: ' + sONOFF[handleMessage.deviceid]["alias"])
-      appendFile('sONOFF.cmd', 'name ' + handleMessage.deviceid + ' ' + sONOFF[handleMessage.deviceid]["alias"] + '\n', function (err) { // update sONOFF.cmd file with new device
+    if (!sONOFF[ws['deviceid']]) { // 1st time we've seen this device
+      sONOFF[ws['deviceid']] = {};
+      sONOFF[ws['deviceid']]["alias"] = 'new-' + ws['deviceid']; // provide a new temporary alias
+      console.log('device ' + ws['deviceid'] + ' is signing-in and is not on the known devices list. Check sONOFF.cmd file for new devices and replace its temporary given name: ' + sONOFF[ws['deviceid']]["alias"])
+      appendFile('sONOFF.cmd', 'name ' + ws['deviceid'] + ' ' + sONOFF[ws['deviceid']]["alias"] + '\n', function (err) { // update sONOFF.cmd file with new device
         if (err) throw err;
         console.log('sONOFF.cmd file was updated!');
       });
-    } else console.log('device ' + handleMessage.deviceid + ' is signing-in and is known by the name: ' + sONOFF[handleMessage.deviceid]["alias"])
-    sONOFF[handleMessage.deviceid]['registerSTR'] = handleMessage.msg;
-    sONOFF[handleMessage.deviceid]['isOnline'] = true;
-    const device = {};  //create a new obj that will store connection infos
-    device["ws"] = handleMessage.ws;
-    device["apikey"] = handleMessage.uuid;
-    sONOFF[handleMessage.deviceid]["state"] = 'Registered';
-    sONOFF[handleMessage.deviceid]["conn"] = device;
+    } else console.log('device ' + ws['deviceid'] + ' is signing-in and is known by the name: ' + sONOFF[ws['deviceid']]["alias"])
+    sONOFF[ws['deviceid']]['registerSTR'] = ws['msg'];
+    sONOFF[ws['deviceid']]["state"] = 'Registered';
   });
   
-  handleMessage.on('date', () => {
-    sONOFF[handleMessage.deviceid]['dateSTR'] = handleMessage.msg;
+  handleMessage.on('date', (ws) => {
+    sONOFF[ws['deviceid']]['dateSTR'] = ws['msg'];
     console.log('DATE request received');
-    const response = '{ "error": 0, "deviceid": "' + handleMessage.deviceid + '", "apikey": "' + handleMessage.uuid + '", "date": "' + new Date().toISOString() + '" }';
-    console.log('>>>: ' + response);
-    handleMessage.ws.send(response);
+    const response = '{ "error": 0, "deviceid": "' + ws['deviceid'] + '", "apikey": "' + proxyAPIKey + '", "date": "' + new Date().toISOString() + '" }';
+    // console.log('>>>: ' + response);
+    console.log('WS message Proxy --> ' + ws['IP'] + ' | ' + ws['deviceid'] +  ': ', response);
+    ws.send(response);
   });
   
-  handleMessage.on('update', () => {
-    sONOFF[handleMessage.deviceid]['updateSTR'] = handleMessage.msg;
-    console.log('UPDATE received from device ' + handleMessage.deviceid);
-    sONOFF[handleMessage.deviceid]['state'] = handleMessage.msg['params']['switch'];
-    const response = '{ "error": 0, "deviceid": "' + handleMessage.deviceid + '", "apikey": "' + handleMessage.uuid + '" }';
-    console.log('>>>: ' + response);
-    handleMessage.ws.send(response);
+  handleMessage.on('update', (ws) => {
+    sONOFF[ws['deviceid']]['updateSTR'] = ws['msg'];
+    console.log('UPDATE received from device ' + ws['deviceid']);
+    let msgObj = JSON.parse(ws['msg']);
+    sONOFF[ws['deviceid']]['state'] = msgObj['params']['switch'];
+    const response = '{ "error": 0, "deviceid": "' + ws['deviceid'] + '", "apikey": "' + proxyAPIKey + '" }';
+    // console.log('>>>: ' + response);
+    console.log('WS message Proxy --> ' + ws['IP'] + ' | ' + ws['deviceid'] +  ': ', response);
+    ws.send(response);
   });
   
-  handleMessage.on('query', () => {
-    sONOFF[handleMessage.deviceid]['querySTR'] = handleMessage.msg;
+  handleMessage.on('query', (ws) => {
+    sONOFF[ws['deviceid']]['querySTR'] = ws['msg'];
     console.log('QUERY received');
-  });
-  
-  // export default handleMessage;
-  
+    sONOFF[ws['deviceid']]["isOnLine"] = true;
+    console.log('device: ' + ws['deviceid'] + 'is now OnLine: ' + sONOFF[ws['deviceid']]["state"]);
+    proxyEvent.emit('devConnEstablished', ws['deviceid'], 'date');
+  });  

@@ -12,4 +12,4 @@ iptables -t nat -A PREROUTING -p tcp --dport 8081 -j DNAT --to-destination 192.1
 iptables -t nat -A PREROUTING -p tcp --sport 8081 -j DNAT --to-destination 192.168.200.1:8888
 
 # RUN the server
-node sONOFFserver.mjs
+node proxy.js

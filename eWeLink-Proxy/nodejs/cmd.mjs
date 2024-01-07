@@ -18,7 +18,7 @@
 import net from 'net';
 import readline from 'readline';
 import { createReadStream, existsSync, writeFile } from 'fs';
-import { sONOFF, cmdFile } from './sharedVARs.js';
+import { sONOFF, cmdFile, proxyAPIKey, proxyEvent } from './sharedVARs.js';
 
 export function cmdSocket() {
     var re = /\s*(?: |\n)\s*/;
@@ -50,10 +50,12 @@ export function cmdSocket() {
             let now = new Date().getTime(); // is the time in secs and it is used as a sequence number
             let device = sONOFF[devID]; // get relay information
             if (device.conn && device.conn.ws) {
-                let ONOFFmessage = '{"action":"update","deviceid":"' + devID + '","apikey":"' + device.conn.apikey + '","userAgent":"app","sequence":"' + now + '","ts":0,"params":{"switch":"' + toState + '"},"from":"app"}';
+                let ONOFFmessage = '{"action":"update","deviceid":"' + devID + '","apikey":"' + proxyAPIKey + '","userAgent":"app","sequence":"' + now + '","ts":0,"params":{"switch":"' + toState + '"},"from":"app"}';
                 device.state = toState;
                 console.log('sending to device: ' + ONOFFmessage);
-                device.conn.ws.send(ONOFFmessage);
+                device.conn.ws.send(ONOFFmessage); // send cmd to device
+                ONOFFmessage = '{"action":"update","deviceid":"' + devID + '","apikey":"' + proxyAPIKey + '","userAgent":"device","sequence":"' + now + '","ts":0,"params":{"switch":"' + toState + '"},"from":"app"}';
+                proxyEvent.emit('messageFromCMD', devID, ONOFFmessage); // send update message to Cloud
             } else { console.log('ERROR: device: ' + devID + ' is not online'); return 0 }
 
         } else if (cmd == 'name') { //cmd[0] = device ID, cmd[1] = device name (alias)
