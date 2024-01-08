@@ -5,7 +5,7 @@
 
 // Importing the handleMessage function from the messageHandler module
 import { handleMessage } from './messageHandler.mjs';
-import { sONOFF } from './sharedVARs.js'
+import { proxyEvent, sONOFF } from './sharedVARs.js'
 
 // A dictionary to store dispatch information using device IDs as keys
 const dispatch = {};
@@ -89,22 +89,12 @@ export function handleWebSocketConnection(ws, req) {
     let wsTimeout = null;
 
     ws.on('ping', () => { // we've received a PING request
-      const currentTime = Date.now();
-      const timeDifference = (currentTime - prevPingTime) / 1000; // Convert milliseconds to seconds
-      console.log(`PING received from ${connectionId}: Time between pings: ${timeDifference} secs`);
-      prevPingTime = currentTime;
-    
-      // Close connection if more than 300 secs from last PING
-      // Clear existing timeout if it exists
-        // if (wsTimeout) {
-        //     clearTimeout(wsTimeout);
-        // }
-
-        // // Set a new timeout for 300 seconds
-        // wsTimeout = setTimeout(() => {
-        //     console.log('WebSocket connection closed due to inactivity.');
-        //     ws.terminate(); // Close the WebSocket connection
-        // }, 300000); // 300 seconds in milliseconds
+        const currentTime = Date.now();
+        const timeDifference = (currentTime - prevPingTime) / 1000; // Convert milliseconds to seconds
+        console.log(`PING received from ${connectionId}: Time between pings: ${timeDifference} secs`);
+        prevPingTime = currentTime;
+        console.log('\nemitting event pingReceived from device: ' + ws['deviceid']);
+        proxyEvent.emit('pingReceived',ws['deviceid'])
     });
 
     // this section handels other regular socket's events
@@ -113,7 +103,12 @@ export function handleWebSocketConnection(ws, req) {
     handleMessage.setWebSocket(ws, deviceIP);
 
     // Handling WebSocket errors
-    ws.on('error', console.error);
+    ws.on('error', () => {
+        console.log('device WS ERROR');
+        console.error('WS ERROR for: ' + ws['deviceid']);
+        proxyEvent.emit('proxy2deviceConnectionClosed', ws['deviceid'])
+        ws.terminate();
+    });
 
     // Handling incoming WebSocket messages using the handleMessage.msgInit function
     let connectionId = null;
@@ -131,6 +126,8 @@ export function handleWebSocketConnection(ws, req) {
         } else {
             console.log('Connection closed, but no matching connectionId found.');
         }
+
+        proxyEvent.emit('proxy2deviceConnectionClosed', ws['deviceid'])
      });
 
 }

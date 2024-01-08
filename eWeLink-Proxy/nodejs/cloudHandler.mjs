@@ -198,7 +198,7 @@ cloudHandler.connect = (deviceid) => {
     ws.on('close', function close() {
       console.log('Disconnected from CLOUD WebSocket server');
       clearInterval(ws['pingInterval']);
-      cloudHandler.connect(cloudHandler.deviceid);
+      // cloudHandler.connect(cloudHandler.deviceid);
     });
 
     // function reconnect() {
@@ -213,4 +213,13 @@ cloudHandler.connect = (deviceid) => {
 cloudHandler.forward2cloud = (deviceID, message) => {
     console.log('forwarding to Cloud :' + message)
     sONOFF[deviceID]['cloudWS'] && sONOFF[deviceID]['cloudWS'].send(message.replace(reAPIkey, 'apikey":"' + cloudAPIKey + '"'));
+  }
+
+cloudHandler.closeConnection = (deviceID) => {
+  console.log('closing connection to Cloud for: ' + deviceID)
+  sONOFF[deviceID]['cloudWS'] && sONOFF[deviceID]['cloudWS'].terminate(); // Close the WebSocket connection
+  sONOFF[deviceID]['cloudWS'] = null;
+  sONOFF[deviceID]['conn'] = null;
+  sONOFF[deviceID]['state'] = 'OFFLINE';
+  sONOFF[deviceID]['isOnline'] = false;  
 }

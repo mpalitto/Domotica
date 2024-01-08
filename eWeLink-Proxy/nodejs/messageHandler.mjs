@@ -74,7 +74,10 @@ export const handleMessage = {
         if (! sONOFF[ws['deviceid']]["isOnLine"]) sONOFF[ws['deviceid']]["isOnLine"] = false;
         console.log('device: ' + ws['deviceid'] + ' is now OnLine: ' + sONOFF[ws['deviceid']]["isOnLine"]);
         if (sONOFF[ws['deviceid']]["isOnLine"]) {
+          console.log('\nemitting event pingReceived from device: ' + ws['deviceid']);
           proxyEvent.emit('messageFromDevice', ws['deviceid'], ws['msg']);
+          proxyEvent.emit('pingReceived', ws['deviceid']);
+          // proxyEvent.emit('pingReceived', ws['deviceid']);
           if(msgObj['action'] == 'update') {
             sONOFF[ws['deviceid']]['state'] = msgObj['params']['switch'];
           }
@@ -96,7 +99,7 @@ export const handleMessage = {
   
   handleMessage.on('register', (ws) => {
     console.log('REGISTRATION request received... sending reply');
-    const response = '{ "error": 0, "deviceid": "' + ws['deviceid'] + '", "apikey": "' + proxyAPIKey + '", "config": { "hb": 1, "hbInterval": 145 } }';
+    const response = '{ "error": 0, "deviceid": "' + ws['deviceid'] + '", "apikey": "' + proxyAPIKey + '", "config": { "hb": 1, "hbInterval": 3 } }';
     // console.log('>>>: ' + response);
     console.log('WS message Proxy --> ' + ws['IP'] + ' | ' + ws['deviceid'] +  ': ', response);
     ws.send(response);

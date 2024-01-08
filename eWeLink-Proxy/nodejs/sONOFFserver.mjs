@@ -2,7 +2,7 @@ import { createServer } from 'https';
 import { readFileSync } from 'fs';
 import { WebSocketServer } from 'ws';
 import { handleHttpRequest, handleWebSocketConnection } from './requestHandler.mjs';
-import { sONOFF, reAPIkey, proxyAPIKey } from './sharedVARs.js';
+import { sONOFF, reAPIkey, proxyEvent, proxyAPIKey } from './sharedVARs.js';
 
 // Disabling TLS rejection for testing purposes
 process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
@@ -49,5 +49,27 @@ export const sONOFFserver = {
       }
       device.conn.ws.send(message.replace(reAPIkey, 'apikey":"' + proxyAPIKey + '"'));
     }
+  },
+
+  checkinDeviceOnLine: (deviceid) => {
+    
+    let ws = sONOFF[deviceid]['conn']['ws'];
+    // Close connection if more than 30 secs from last PING
+    // Clear existing timeout if it exists
+    if (ws['wsTimeout']) {
+      clearTimeout(ws['wsTimeout']);
+    }
+
+    // Set a new timeout for 30 seconds
+    ws['wsTimeout'] = setTimeout(() => {
+      console.log('\n\n----------------------------------------------------');
+      console.log('-- WebSocket connection closed due to inactivity. --');
+      console.log('-----------         for: ' + ws['deviceid'] + '      -----------');
+      console.log('----------------------------------------------------\n\n');
+      ws.terminate(); // Close the WebSocket connection
+    }, 30000); // 30 seconds in milliseconds
+
+    console.log('\n\nwsTimeout started for device: ' + ws['deviceid'])
+
   }
 };
