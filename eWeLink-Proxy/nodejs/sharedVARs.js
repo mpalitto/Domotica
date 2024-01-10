@@ -1,11 +1,17 @@
-// A dictionary to store dispatch information using device IDs as keys
-const dispatch = {};
+/*
+Author: Matteo Palitto
+Date: January 9, 2024
+
+Description: sharedVARs.js
+This module exports the global variables
+*/
 
 // Object to store sONOFF device information
 const sONOFF = {};
-const cmdFile = './sONOFF.cmd'
+const cmdFile = './sONOFF.cmd' // Initial device configuration file
 
-const events = require('events');
+// events used for communication between modules
+const events = require('events');  
 const proxyEvent = new events.EventEmitter();
 
 const reAPIkey = /apikey[^,]+/; //regular expression for the apikey...

@@ -1,6 +1,15 @@
 /*
-  This module handles HTTP and WebSocket requests related to device dispatch.
-  It exports 2 functions: handleHttpRequest, and handleWebSocketConnection.
+Author: Matteo Palitto
+Date: January 9, 2024
+
+Description: requestHandler.mjs
+This module handles HTTP and WebSocket requests.
+It exports 2 functions: handleHttpRequest, and handleWebSocketConnection.
+1. handleHttpRequest replies to the device request for where to find WS Server (DISPATCH request)
+   by providing WS Server and Port
+2. handleWebSocketConnection handles the device registration process.
+
+all the device informations including connection are stored within the sONOFF object
 */
 
 // Importing the handleMessage function from the messageHandler module

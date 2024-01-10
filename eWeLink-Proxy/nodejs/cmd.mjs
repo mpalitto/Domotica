@@ -1,18 +1,27 @@
-// The code interact with  sONOFF service (sONOFFserver) based on the received commands ('switch', 'name', 'list', etc.). 
-// The commands control sONOFF switches, update their states, and manage aliases for these devices.
+/*
+Author: Matteo Palitto
+Date: January 9, 2024
 
-// The alises are entered by operator using the sONOFF.cmd file
-// follow an example of cmd file
-// name 100003ac56 powerSW-loudary # washing machine switch with power meter 
-// name 1000024c89 dining # dining light in the living room
-// name 1000024cfd master-bath # master bathroom light
-// name 1000024e09 new-ae6be48c-ff69-4da9-875d-1f992631b3e9 # new switch with no alias assigned yet
-//
-// NOTE: in the future I would like to implement other commands:
-// timers for automatic on and off
-// lights turning on and off to simulate someone is home
-// groups, define groups of light to turn on or off with a single command
-// ...
+Description: requestHandler.mjs
+This module handles HTTP and WebSocket requests related to device dispatch.
+It exports 2 functions: handleHttpRequest, and handleWebSocketConnection.
+
+The code interact with  sONOFF service (sONOFFserver) based on the received commands ('switch', 'name', 'list', etc.). 
+The commands control sONOFF switches, update their states, and manage aliases for these devices.
+
+The alises are entered by operator using the sONOFF.cmd file
+follow an example of cmd file
+name 100003ac56 powerSW-loudary # washing machine switch with power meter 
+name 1000024c89 dining # dining light in the living room
+name 1000024cfd master-bath # master bathroom light
+name 1000024e09 new-ae6be48c-ff69-4da9-875d-1f992631b3e9 # new switch with no alias assigned yet
+
+NOTE: in the future I would like to implement other commands:
+timers for automatic on and off
+lights turning on and off to simulate someone is home
+groups, define groups of light to turn on or off with a single command
+*/
+
 
 // Import net module.
 import net from 'net';

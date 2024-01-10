@@ -1,34 +1,42 @@
-// This code sets up a message handler (handleMessage) that manages WebSocket messages for devices. Here's a breakdown:
+/*
+Author: Matteo Palitto
+Date: January 9, 2024
 
-// Initialization:
+Description: messageHandler.mjs
+This module handles HTTP and WebSocket requests related to device dispatch.
+It exports 2 functions: handleHttpRequest, and handleWebSocketConnection.
 
-// const sONOFF = {};: An empty object used for storing device-related data for later use.
-// export const handleMessage = { ... }: Declaration of an object named handleMessage containing methods to handle WebSocket messages and device actions.
-// Properties:
+This code sets up a message handler (handleMessage) that manages WebSocket messages for devices. Here's a breakdown:
 
-// ws: WebSocket connection object.
-// device: Holds device-related information.
-// actions: Stores action handlers.
-// deviceid: Identifier for the device.
-// msg: Placeholder for received messages.
+Initialization:
 
-// Methods:
+const sONOFF = {};: An empty object used for storing device-related data for later use.
+export const handleMessage = { ... }: Declaration of an object named handleMessage containing methods to handle WebSocket messages and device actions.
+Properties:
 
-// setWebSocket: Sets the WebSocket connection.
-// on: Adds an action handler to the actions object.
-// handleAction: Executes an action handler based on the received action.
-// Message Handling:
+ws: WebSocket connection object.
+device: Holds device-related information.
+actions: Stores action handlers.
+deviceid: Identifier for the device.
+msg: Placeholder for received messages.
 
-// msgInit: Parses incoming WebSocket messages, handles errors, extracts relevant data, and triggers appropriate actions based on the message action.
-// Event Handling:
+Methods:
 
-// on('register'): Handles a 'register' event by sending a registration reply, storing device data, and acknowledging the registration.
-// on('date'): Handles a 'date' event by storing date-related information, updating device state, and sending a response with the current date.
-// on('update'): Handles an 'update' event by updating device information based on received data and sending an acknowledgment response.
-// on('query'): Handles a 'query' event by logging the receipt of the query.
+setWebSocket: Sets the WebSocket connection.
+on: Adds an action handler to the actions object.
+handleAction: Executes an action handler based on the received action.
+Message Handling:
 
+msgInit: Parses incoming WebSocket messages, handles errors, extracts relevant data, and triggers appropriate actions based on the message action.
+Event Handling:
 
-// const sONOFF = {};
+on('register'): Handles a 'register' event by sending a registration reply, storing device data, and acknowledging the registration.
+on('date'): Handles a 'date' event by storing date-related information, updating device state, and sending a response with the current date.
+on('update'): Handles an 'update' event by updating device information based on received data and sending an acknowledgment response.
+on('query'): Handles a 'query' event by logging the receipt of the query.
+
+*/
+
 import { sONOFF, proxyEvent, proxyAPIKey } from './sharedVARs.js'
 import { appendFile } from 'fs';
 

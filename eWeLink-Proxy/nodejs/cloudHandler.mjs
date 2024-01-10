@@ -1,3 +1,10 @@
+/*
+Author: Matteo Palitto
+Date: January 9, 2024
+
+Description: cloudHandler.mjs
+This module implements a client side that will connect to the cloud server impersonificating the sONOFF devices
+*/
 // /////////////////// ////
 //                     ////
 // PROXY functionality ////
