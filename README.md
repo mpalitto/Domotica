@@ -4,7 +4,7 @@
 
 - **sONOFF-RF**: Switches controlled by WiFi and RF signals
 - **LWRF Mood Controller**: Stylish remote controls that use RF signals
-- **ESP32 + RF-RX**: Receives codes from the remote controls
+- **ESP8266 + RF-RX**: Receives codes from the remote controls
 - **Arduino + RF-TX**: Sends ON/OFF commands to the sONOFF switches
 - **Linux Server**: Manages the system
 
@@ -13,8 +13,8 @@
 1. ![image](https://github.com/user-attachments/assets/61b4dce5-5deb-4a12-9c55-6c51129e3704)
 **LWRF Mood Controller** sends RF signals.
 2. ![image](https://github.com/user-attachments/assets/662b5011-f7e4-48c5-a2b8-b61e419d7f73)
-**ESP32 + RF-RX** receives these RF signals.
-3. **ESP32** connects to the **Linux Server** via WiFi.
+**ESP8266 + RF-RX** receives these RF signals.
+3. **ESP8266** connects to the **Linux Server** via WiFi.
 4. ![image](https://github.com/user-attachments/assets/5fb99af1-e832-484b-b28c-54b38e446c26)
 The **Linux Server** communicates with the **Arduino + RF-TX**.
 5. ![image](https://github.com/user-attachments/assets/dd578410-a87e-46ef-bf4a-f16b2424cf12)
@@ -24,21 +24,23 @@ lights
 
 
 ```
-   [LWRF Mood Controller]
-             |
-             | RF codes (Lightwave proprietary)
-             v
-    [ESP32 + RF-RX]
-             |
-             | WiFi
-             v
-       [Linux Server]
-             |
-             | USB (serial)
-             v
-   [Arduino + RF-TX]
-             |
-             | RF codes (standard)
-             v
-     [sONOFF-RF Switch]
+   [LWRF Mood Controller]                          [Smartphone App (eWelink)]
+             |                                            |
+             | RF codes (Lightwave proprietary)           |  Cloud communication
+             v                                            v
+    [ESP8266 + RF-RX]                                [SONOFF Cloud Server (eu-disp.coolkit.cc)]
+             |                                            ^
+             | WiFi                                       |
+             v                                            |
+       [Linux Server]                                     |
+             |                                            |  Cloud communication
+             | USB (serial)                               |
+             v                                            |
+   [Arduino + RF-TX]                                      |
+             |                                            |
+             | RF codes (standard)                        v
+             |                                         .-~~~-.
+             v                                     .-~~       ~~-.
+ [SONOFF-RF Switch] <---------------------------->(    Internet    )
+                            Cloud communication    `-. ~~~~~~~ .-'
 ```
