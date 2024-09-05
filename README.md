@@ -19,7 +19,7 @@
 The **Linux Server** communicates with the **Arduino + RF-TX**.
 5. ![image](https://github.com/user-attachments/assets/dd578410-a87e-46ef-bf4a-f16b2424cf12)
 **Arduino + RF-TX** transmits ON/OFF commands to the **sONOFF-RF Switches**.
-6. ![image](https://github.com/user-attachments/assets/6e4ca74c-d807-420b-8169-60b8fd3bf3c6)**sONOFF-RF Switches** switches ON or OFF the ![image](https://github.com/user-attachments/assets/342dbbcc-0a28-4be2-9f60-d0a9fffacacc)
+6. ![image](https://github.com/user-attachments/assets/6e4ca74c-d807-420b-8169-60b8fd3bf3c6)  **sONOFF-RF** switches ON or OFF the   ![image](https://github.com/user-attachments/assets/342dbbcc-0a28-4be2-9f60-d0a9fffacacc)
 lights
 
 
@@ -42,7 +42,7 @@ lights
              |                                         .-~~~-.
              v                                     .-~~       ~~-.
  [SONOFF-RF Switch] <---------------------------->(    Internet    )
-                            Cloud communication    `-. ~~~~~~~ .-'
+                          Cloud communication      `-. ~~~~~~~ .-'
 ```
 ### Smartphone APP Control
-Each SONOFF-RF device connects to the internet via WiFi and establishes a link with the SONOFF Cloud Server. The smartphone app connects to the SONOFF Cloud Server, allowing the user to control the lights remotely from anywhere in the world... as long the SONOFF-RF Switch is connected to the INTERNET... and ** ITEAD Studio **(manufacturer) provides the Cloud Server!
+Each SONOFF-RF device connects to the internet via WiFi and establishes a link with the SONOFF Cloud Server. The smartphone app connects to the SONOFF Cloud Server, allowing the user to control the lights remotely from anywhere in the world... as long the SONOFF-RF Switch is connected to the INTERNET... and **ITEAD Studio** (manufacturer) provides the Cloud Server!
