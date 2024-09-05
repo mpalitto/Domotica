@@ -1,5 +1,5 @@
 # Domotica
-Domotica system using Arduino + sONOFF-RF + LWRF mood switches + Linux Server 
+Domotica system using Arduino + sONOFF-RF + LWRF mood controller + Linux Server 
 
 ## Component list:
 * sONOFF-RF: WiFi + RF controlled switches
