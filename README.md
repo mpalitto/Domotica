@@ -44,5 +44,5 @@ lights
  [SONOFF-RF Switch] <---------------------------->(    Internet    )
                             Cloud communication    `-. ~~~~~~~ .-'
 ```
-### Smartphone APP Controll
-Each SONOFF-RF device connects to the internet via WiFi and establishes a link with the SONOFF Cloud Server. The smartphone app connects to the SONOFF Cloud Server, allowing the user to control the lights remotely from anywhere in the world... as long the SONOFF-RF Switch is connected to the INTERNET!
+### Smartphone APP Control
+Each SONOFF-RF device connects to the internet via WiFi and establishes a link with the SONOFF Cloud Server. The smartphone app connects to the SONOFF Cloud Server, allowing the user to control the lights remotely from anywhere in the world... as long the SONOFF-RF Switch is connected to the INTERNET... and ** ITEAD Studio **(manufacturer) provides the Cloud Server!
