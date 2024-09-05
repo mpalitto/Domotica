@@ -2,15 +2,13 @@
 Domotica system using Arduino + sONOFF-RF + LWRF mood switches + Linux Server 
 
 ## Component list:
-* sONOFF-RF: WiFi + RF rele'
-* LWRF mood switches: elegant RF remotes 
-* ARDUINO YUN + RF-RX: switches code receiver
-* ARDUINO + RF-TX: RF transmitter to sONOFF rele'
+* sONOFF-RF: WiFi + RF controlled switches
+* LWRF mood controller: elegant RF remotes 
+* ESP32 + RF-RX: switches code receiver
+* ARDUINO + RF-TX: RF transmitter
 * Linux Server
 
 ## Architecture:
-''' LWRF button --> ARDUINO YUN + RF-RX --> LAN --> Linux Server --> Arduino + RF-TX --> sONOFF rele' '''
+''' LWRF controller --> ESP32 + RF-RX --> LAN(WiFi) --> Linux Server --> Arduino + RF-TX --> sONOFF-RF Switch '''
 
 ## Code:
-ARDUINO YUN:
-`questo e' una linea di codice`
