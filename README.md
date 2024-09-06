@@ -1,14 +1,6 @@
 # Domotica System Overview
 
-**Components Used:**
-
-- **sONOFF-RF**: Switches controlled by WiFi and RF signals
-- **LWRF Mood Controller**: Stylish remote controls that use RF signals
-- **ESP8266 + RF-RX**: Receives codes from the remote controls
-- **Arduino + RF-TX**: Sends ON/OFF commands to the sONOFF switches
-- **Linux Server**: Manages the system
-
-**System Architecture:**
+## System Architecture
 
 1. ![image](https://github.com/user-attachments/assets/61b4dce5-5deb-4a12-9c55-6c51129e3704)
 **LWRF Mood Controller** sends RF signals.
@@ -22,7 +14,15 @@ The **Linux Server** communicates with the **Arduino + RF-TX**.
 6. ![image](https://github.com/user-attachments/assets/6e4ca74c-d807-420b-8169-60b8fd3bf3c6)  **sONOFF-RF** switches ON or OFF the   ![image](https://github.com/user-attachments/assets/342dbbcc-0a28-4be2-9f60-d0a9fffacacc)
 lights
 
+**Components Used:**
 
+- N x **sONOFF-RF**: Switches controlled by WiFi and RF signals
+- M x **LWRF Mood Controller**: Stylish remote controls that use RF signals
+- L x **ESP8266 + RF-RX**: Receives codes from the remote controls
+- 1 x **Arduino + RF-TX**: Sends ON/OFF commands to the sONOFF switches
+- 1 x **Linux Server**: Manages the system
+
+## Architecture Overview Diagram
 ```
    [LWRF Mood Controller]                          [Smartphone App (eWelink)]
              |                                            |
@@ -46,3 +46,34 @@ lights
 ```
 ### Smartphone APP Control
 Each SONOFF-RF device connects to the internet via WiFi and establishes a link with the SONOFF Cloud Server. The smartphone app connects to the SONOFF Cloud Server, allowing the user to control the lights remotely from anywhere in the world... as long the SONOFF-RF Switch is connected to the INTERNET... and **ITEAD Studio** (manufacturer) provides the Cloud Server!
+
+## Architecture Home side details Diagram
+
+```
+ Remote Controller 1          Remote Controller 2  ........  Remote Controller N
+           |                            |                              |
+       [RF Signal]                 [RF Signal]                   [RF Signal]
+           |                            |                              |
+           v                            v                              v
+    --------------------------[ Lightwave codes ]--------------------------
+           |                            |                              |
+           v                            v                              v
+    ESP8266+RF-Rx(1)             ESP8266+RF-Rx(2)   ..........  ESP8266+RF-Rx(M)
+           |                            |                              |
+      [WiFi Signal]                [WiFi Signal]                 [WiFi Signal]
+           |                            |                              |
+           v                            v                              v
+     ---------------------------[ Buttons codes ]--------------------------
+                                        |
+                                        v
+                       [ Linux-Server + Arduino + RF-Tx ]
+                                        |
+                                        v
+     ---------------------------[ RF sONOFF codes ]--------------------------
+           |                            |                              |
+           v                            v                              v
+       sONOFF-RF(1)                 sONOFF-RF(2)     ..........    sONOFF-RF(L)
+           |                            |                              |
+           v                            v                              v
+        LIGHT(1)                     LIGHT(2)       ..........      LIGHT(L)
+```
