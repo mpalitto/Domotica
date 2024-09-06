@@ -1,6 +1,7 @@
 # Domotica System Overview
 
 ## System Architecture
+This system architecture represents a multi-level communication setup designed to control lights wirelessly using remote controllers, RF signals, ESP8266 modules, Wi-Fi, and a central Linux server.
 
 1. ![image](https://github.com/user-attachments/assets/61b4dce5-5deb-4a12-9c55-6c51129e3704)
 **LWRF Mood Controller** sends RF signals.
@@ -13,40 +14,6 @@ The **Linux Server** communicates with the **Arduino + RF-TX**.
 **Arduino + RF-TX** transmits ON/OFF commands to the **sONOFF-RF Switches**.
 6. ![image](https://github.com/user-attachments/assets/6e4ca74c-d807-420b-8169-60b8fd3bf3c6)  **sONOFF-RF** switches ON or OFF the   ![image](https://github.com/user-attachments/assets/342dbbcc-0a28-4be2-9f60-d0a9fffacacc)
 lights
-
-**Components Used:**
-
-- N x **sONOFF-RF**: Switches controlled by WiFi and RF signals
-- M x **LWRF Mood Controller**: Stylish remote controls that use RF signals
-- L x **ESP8266 + RF-RX**: Receives codes from the remote controls
-- 1 x **Arduino + RF-TX**: Sends ON/OFF commands to the sONOFF switches
-- 1 x **Linux Server**: Manages the system
-
-## Architecture Overview Diagram
-```
-   [LWRF Mood Controller]                          [Smartphone App (eWelink)]
-             |                                            |
-             | RF codes (Lightwave proprietary)           |  Cloud communication
-             v                                            v
-    [ESP8266 + RF-RX]                                [SONOFF Cloud Server (eu-disp.coolkit.cc)]
-             |                                            ^
-             | WiFi                                       |
-             v                                            |
-       [Linux Server]                                     |
-             |                                            |  Cloud communication
-             | USB (serial)                               |
-             v                                            |
-   [Arduino + RF-TX]                                      |
-             |                                            |
-             | RF codes (standard)                        v
-             |                                         .-~~~-.
-             v                                     .-~~       ~~-.
- [SONOFF-RF Switch] <---------------------------->(    Internet    )
-                          Cloud communication      `-. ~~~~~~~ .-'
-```
-### Smartphone APP Control
-Each SONOFF-RF device connects to the internet via WiFi and establishes a link with the SONOFF Cloud Server. The smartphone app connects to the SONOFF Cloud Server, allowing the user to control the lights remotely from anywhere in the world... as long the SONOFF-RF Switch is connected to the INTERNET... and **ITEAD Studio** (manufacturer) provides the Cloud Server!
-
 ## Architecture Home side details Diagram
 
 ```
@@ -77,3 +44,69 @@ Each SONOFF-RF device connects to the internet via WiFi and establishes a link w
            v                            v                              v
         LIGHT(1)                     LIGHT(2)       ..........      LIGHT(L)
 ```
+
+1. **Remote Controllers (1 to N)**:  
+   These remote controllers send RF (radio frequency) signals, each corresponding to a different control action.
+
+2. **RF Signal Transmission**:  
+   The RF signals from the remote controllers are transmitted to their respective receivers.
+
+3. **Lightwave Codes Layer**:  
+   Each RF signal is interpreted by Lightwave codes, which standardize the input across the system. This acts as an intermediary layer between the RF signal and the receivers.
+
+4. **ESP8266 + RF-Rx (Receivers 1 to M)**:  
+   The ESP8266 modules are connected to RF receivers (RF-Rx). Each ESP8266+RF-Rx module receives RF signals from the remote controllers and converts these signals into Wi-Fi signals.
+
+5. **Wi-Fi Signal Transmission**:  
+   The Wi-Fi signals, now carrying the command data, are sent across the network.
+
+6. **Button Codes Layer**:  
+   The Wi-Fi signals are interpreted as button codes that correspond to specific control actions, such as turning lights on or off. These button codes are processed centrally.
+
+7. **Central Linux Server + Arduino + RF-Tx**:  
+   The central server, running Linux and connected to an Arduino with an RF transmitter (RF-Tx), receives the button codes and determines the appropriate response. It sends the corresponding RF sONOFF codes to the appropriate devices (sONOFF).
+
+8. **RF sONOFF Codes Transmission**:  
+   These RF sONOFF codes are sent out to the sONOFF RF modules.
+
+9. **sONOFF RF Modules (1 to L)**:  
+   Each sONOFF RF module receives the RF sONOFF code and translates it into a control signal for the connected lights.
+
+10. **Lights (1 to L)**:  
+    The sONOFF modules are connected to lights, which respond to the RF sONOFF signals by turning on or off according to the command.
+
+In summary, this system architecture facilitates the wireless control of multiple lights, where remote controllers send RF signals that are processed by ESP8266 receivers and a central server to ultimately trigger actions in sONOFF RF modules that control the lights.
+
+**Components Used:**
+
+- N x **sONOFF-RF**: Switches controlled by WiFi and RF signals
+- M x **LWRF Mood Controller**: Stylish remote controls that use RF signals
+- L x **ESP8266 + RF-RX**: Receives codes from the remote controls
+- 1 x **Arduino + RF-TX**: Sends ON/OFF commands to the sONOFF switches
+- 1 x **Linux Server**: Manages the system
+## Smartphone APP Control
+Each SONOFF-RF device connects to the internet via WiFi and establishes a link with the SONOFF Cloud Server. The smartphone app connects to the SONOFF Cloud Server, allowing the user to control the lights remotely from anywhere in the world... as long the SONOFF-RF Switch is connected to the INTERNET... and **ITEAD Studio** (manufacturer) provides the Cloud Server!
+
+### Architecture Overview Diagram
+```
+   [LWRF Mood Controller]                          [Smartphone App (eWelink)]
+             |                                            |
+             | RF codes (Lightwave proprietary)           |  Cloud communication
+             v                                            v
+    [ESP8266 + RF-RX]                                [SONOFF Cloud Server (eu-disp.coolkit.cc)]
+             |                                            ^
+             | WiFi                                       |
+             v                                            |
+       [Linux Server]                                     |
+             |                                            |  Cloud communication
+             | USB (serial)                               |
+             v                                            |
+   [Arduino + RF-TX]                                      |
+             |                                            |
+             | RF codes (standard)                        v
+             |                                         .-~~~-.
+             v                                      .-~~      ~~-.
+ [SONOFF-RF Switch] <--WiFi--> [Home Router] <---> (   Internet   )
+                                                    `-. ~~~~~~~ .-'
+```
+
