@@ -1,0 +1,22 @@
+{
+  "lights": [
+    {
+      "id": 1759587360586.9485,
+      "lightId": "C001C1",
+      "name": "N1-area-camera",
+      "code": "C001C1",
+      "x": 495,
+      "y": 360,
+      "state": false
+    },
+    {
+      "id": 1759587362368.8025,
+      "lightId": "C001B1",
+      "name": "N2-area-bagno",
+      "code": "C001B1",
+      "x": 480,
+      "y": 0,
+      "state": false
+    }
+  ]
+}

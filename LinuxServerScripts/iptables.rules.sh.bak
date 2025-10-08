@@ -1,0 +1,16 @@
+# Using the Linux box as sONOFF Proxy to the connection to cloud eWeLink server
+# The box works as AP to which each sONOFF connect to "enxc..." interface
+# The AP is connected to LAN using eth0
+
+#this rule replaces the source IP address with the Linux box IP address
+#this packets coming from sONOFF they get modified with the source IP address replacement (using NAT)
+#MASQUERADE is a special kind of SNAT for dynamic IP address
+#if Linux Box has static IP address it shoud be replaced with
+#iptables -t nat -A POSTROUTING -o eth0 -j SNAT --to 192.168.1.77 ???
+iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+
+# some sONOFFs will use HTTPS protocol using port 443 for connecting to cloud server
+# this rule redirect these packets to the Nodejs Proxy server listening to local port 8080
+#Legacy sONOFFs will use HTTP protocol and port 8080 for connecting to cloud server, thus not need to redirect these packets at all
+iptables -t nat -I PREROUTING -i enxc4e9840b09a5 -p tcp --dport 443 -j REDIRECT --to-port 8080
+iptables-save > /etc/network/iptables.rules

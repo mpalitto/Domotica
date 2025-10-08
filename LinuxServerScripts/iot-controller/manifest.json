@@ -1,0 +1,16 @@
+{
+  "name": "IoT House Map Controller",
+  "short_name": "IoT Control",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#1a1a1a",
+  "theme_color": "#1a1a1a",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'%3E%3Crect fill='%231a1a1a' width='200' height='200'/%3E%3Crect fill='%234a9eff' x='10' y='10' width='180' height='180' rx='20'/%3E%3Cpath fill='%231a1a1a' d='M100 40 L150 90 L50 90 Z'/%3E%3Crect fill='%231a1a1a' x='60' y='90' width='80' height='70'/%3E%3Crect fill='%234a9eff' x='84' y='110' width='32' height='50'/%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml"
+    }
+  ]
+}

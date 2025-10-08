@@ -1,0 +1,30 @@
+#!/bin/sh -e
+#
+# rc.local
+#
+# This script is executed at the end of each multiuser runlevel.
+# Make sure that the script will "exit 0" on success or any other
+# value on error.
+#
+# In order to enable or disable this script just change the execution
+# bits.
+#
+# By default this script does nothing.
+sleep 3
+echo -n > /root/tmp
+echo -n > /root/.lastSwitch
+echo -n > /root/.switch.log
+/root/startDisplay.sh
+/root/startRFreceiverServer.sh
+#nohup /root/screenWrapper.sh & #set connection with arduino
+/root/startRFarduinoTX.sh
+/root/startSwitch.sh         # switch press to light command
+/root/startIoT-WEBui.sh      # WEB UI to turn lights on/off port: 3000
+nohup /root/heartbeat.sh &   #start sending heartbeats to arduinoTX
+nohup /root/sendScanned.sh & #HP printer for sending scanned docs to email
+# iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+# screen -S rx-sw-status -dm /root/rx-sw-status.sh
+# screen -S "rx-sw-status-clear" -dm /root/rx-sw-status-clear.sh
+/root/startCurrentAlarm.sh
+/root/startPIR.sh
+exit 0

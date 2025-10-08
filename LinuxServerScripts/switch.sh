@@ -8,7 +8,8 @@
 #for generating case skeleton
 #for name in ${switchName[@]}; do echo $name; done | sed 's/\(.*\)$/\1)\n  echo -n "\1 "\n  case ${SWcode:5} in\n    0)\n      echo "Button 0"\n      ;;\n    1)\n      echo "Button 1"\n      ;;\n    2)\n      echo "Button 2"\n      ;;\n    3)\n      echo "Button 3"\n      ;;\n    4)\n      echo "Button 4"\n      ;;\n    5)\n      echo "Button 5"\n      ;;\n    esac/'
 
-if [ $(pgrep switch.sh | wc -w) -gt 1 ]; then exit; fi //verify process isn't already running
+process="$(pgrep switch.sh)"
+if [ $(wc -w <<< $process) -gt 1 ]; then echo "switch.sh already running... exiting $process"; exit; fi
 #legge configurazione da file e genera un array associativo
 unset Switch
 declare -A Switch #associative array for easy code reading
@@ -62,6 +63,9 @@ tail -n0 -f /root/tmp | while read line; do
   if [ "${line:0:6}" == "0A1400" ] && [ ! "$(grep $SWcode /root/.lastSwitch)" ]; then
      echo "$SWcode" >> /root/.lastSwitch; (sleep 2 && grep -v $SWcode /root/.lastSwitch > /root/.lastSwitch.tmp; mv /root/.lastSwitch.tmp /root/.lastSwitch) &
 
+    SWC=${SWcode:0:5}
+    SWN=${Switch[${SWcode:0:5}]}
+    echo "now serving: $SWC / $SWN"
     case ${Switch[${SWcode:0:5}]} in
    
     S/C-INGRESSO)
@@ -114,11 +118,11 @@ tail -n0 -f /root/tmp | while read line; do
           ;;
         4)
           echo "Button 4"
-          selection="${sONOFF[G5-area-isola-cucina]}"
+          selection="${sONOFF[G9-area-lavandino]}"
           ;;
         5)
           echo "Button 5"
-          selection="${sONOFF[G9-area-lavandino]}"
+          selection="${sONOFF[G5-area-isola-cucina]}"
           ;;
         esac
       ;;
@@ -164,11 +168,11 @@ tail -n0 -f /root/tmp | while read line; do
           ;;
         2)
           echo "Button 2"
-          selection="${sONOFF[G1G2G3G4-corridoio-principale]}"
+          selection="${sONOFF[G7-area-TV]}"
           ;;
         3)
           echo "Button 3"
-          selection="${sONOFF[G7-area-TV]}"
+          selection="${sONOFF[G1G2G3G4-corridoio-principale]}"
           ;;
         4)
           echo "Button 4"
@@ -221,7 +225,7 @@ tail -n0 -f /root/tmp | while read line; do
           ;;
         2)
           echo "Button 2"
-          selection="${sONOFF[P6-area-serretta]}"
+          # selection="${sONOFF[Shower]}"
           ;;
         3)
           echo "Button 3"
@@ -249,9 +253,11 @@ tail -n0 -f /root/tmp | while read line; do
           ;;
         2)
           echo "Button 2"
+          selection="${sONOFF[P6-area-serretta]}"
           ;;
         3)
           echo "Button 3"
+          selection="${sONOFF[Tree]}"
           ;;
         4)
           echo "Button 4"
@@ -259,7 +265,7 @@ tail -n0 -f /root/tmp | while read line; do
           ;;
         5)
           echo "Button 5"
-          selection="${sONOFF[P6-area-serretta]}"
+          selection="${sONOFF[Shower]}"
           ;;
         esac
       ;;
@@ -357,15 +363,19 @@ tail -n0 -f /root/tmp | while read line; do
           ;;
         2)
           echo "Button 2"
+          selection="${sONOFF[N2-area-bagno]}"
           ;;
         3)
           echo "Button 3"
+          selection="${sONOFF[N2-area-bagno]}"
           ;;
         4)
           echo "Button 4"
+          selection="${sONOFF[N2-area-bagno]}"
           ;;
         5)
           echo "Button 5"
+          selection="${sONOFF[N2-area-bagno]}"
           ;;
         esac
       ;;

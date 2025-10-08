@@ -1,0 +1,22 @@
+{
+  "lights": [
+    {
+      "id": 1759586928231.0918,
+      "lightId": "5EA751",
+      "name": "G7-area-TV",
+      "code": "5EA751",
+      "x": 100,
+      "y": 100,
+      "state": false
+    },
+    {
+      "id": 1759586966764.3005,
+      "lightId": "5EAAC1",
+      "name": "G11-muro-angolo-cucina",
+      "code": "5EAAC1",
+      "x": 345,
+      "y": 285,
+      "state": false
+    }
+  ]
+}

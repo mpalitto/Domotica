@@ -1,0 +1,613 @@
+{
+  "rooms": [
+    {
+      "id": 1759588440785.9883,
+      "name": "SALA/CUCINA",
+      "x": 40,
+      "y": 240,
+      "width": 620,
+      "height": 340,
+      "lights": [
+        {
+          "id": 1759588591047.164,
+          "lightId": "5EAC01",
+          "name": "G1G2G3G4-corridoio-principale",
+          "code": "5EAC01",
+          "x": 795,
+          "y": 90,
+          "state": false
+        },
+        {
+          "id": 1759588606707.1863,
+          "lightId": "5EAD11",
+          "name": "G6-area-divano",
+          "code": "5EAD11",
+          "x": 495,
+          "y": 300,
+          "state": false
+        },
+        {
+          "id": 1759588627032.4443,
+          "lightId": "5EA1A1",
+          "name": "G9-area-lavandino",
+          "code": "5EA1A1",
+          "x": 765,
+          "y": 540,
+          "state": false
+        },
+        {
+          "id": 1759588663999.808,
+          "lightId": "5EAAC1",
+          "name": "G11-muro-angolo-cucina",
+          "code": "5EAAC1",
+          "x": 975,
+          "y": 600,
+          "state": false
+        },
+        {
+          "id": 1759588708904.9905,
+          "lightId": "5EA751",
+          "name": "G7-area-TV",
+          "code": "5EA751",
+          "x": 300,
+          "y": 285,
+          "state": true
+        },
+        {
+          "id": 1759588723690.8708,
+          "lightId": "5EA151",
+          "name": "G5-area-isola-cucina",
+          "code": "5EA151",
+          "x": 765,
+          "y": 405,
+          "state": true
+        },
+        {
+          "id": 1759589856916.617,
+          "lightId": "5EAA51",
+          "name": "G8-area-angolo-vetrata",
+          "code": "5EAA51",
+          "x": 225,
+          "y": 555,
+          "state": false
+        },
+        {
+          "id": 1759678360948.561,
+          "lightId": "5EACD1",
+          "name": "G10-muro-colonna-divano",
+          "code": "5EACD1",
+          "x": 525,
+          "y": 480,
+          "state": false
+        }
+      ],
+      "furniture": [
+        {
+          "id": 1759590592437.8184,
+          "label": "Table",
+          "x": 705,
+          "y": 225,
+          "width": 180,
+          "height": 315,
+          "rotated": false
+        },
+        {
+          "id": 1759590626530.355,
+          "label": "TV",
+          "x": 30,
+          "y": 240,
+          "width": 30,
+          "height": 150,
+          "rotated": true
+        },
+        {
+          "id": 1759590649201.2593,
+          "label": "Shelf",
+          "x": 495,
+          "y": 0,
+          "width": 405,
+          "height": 30,
+          "rotated": false
+        },
+        {
+          "id": 1759590671393.2446,
+          "label": "Sofa",
+          "x": 420,
+          "y": 180,
+          "width": 120,
+          "height": 270,
+          "rotated": false
+        },
+        {
+          "id": 1759590698551.795,
+          "label": "Sofa",
+          "x": 330,
+          "y": 450,
+          "width": 210,
+          "height": 90,
+          "rotated": false
+        },
+        {
+          "id": 1759590717748.129,
+          "label": "Door",
+          "x": 240,
+          "y": 0,
+          "width": 165,
+          "height": 30,
+          "rotated": false
+        },
+        {
+          "id": 1759591822413.574,
+          "label": "Kitchen",
+          "x": 1005,
+          "y": 285,
+          "width": 90,
+          "height": 390,
+          "rotated": false
+        },
+        {
+          "id": 1759591856644.3381,
+          "label": "",
+          "x": 525,
+          "y": 600,
+          "width": 570,
+          "height": 75,
+          "rotated": false
+        },
+        {
+          "id": 1759591905764.6243,
+          "label": "",
+          "x": 180,
+          "y": 270,
+          "width": 75,
+          "height": 105,
+          "rotated": false
+        },
+        {
+          "id": 1759592070067.869,
+          "label": "Lavandino",
+          "x": 855,
+          "y": 600,
+          "width": 90,
+          "height": 60,
+          "rotated": false
+        },
+        {
+          "id": 1759678305112.3213,
+          "label": "COL",
+          "x": 555,
+          "y": 480,
+          "width": 60,
+          "height": 60,
+          "rotated": false
+        }
+      ]
+    },
+    {
+      "id": 1759588442811.6743,
+      "name": "PADRONALE",
+      "x": 520,
+      "y": 40,
+      "width": 300,
+      "height": 200,
+      "lights": [
+        {
+          "id": 1759592729158.789,
+          "lightId": "DAD1C1",
+          "name": "P1-area-letto",
+          "code": "DAD1C1",
+          "x": 435,
+          "y": 135,
+          "state": false
+        },
+        {
+          "id": 1759592739310.097,
+          "lightId": "DADBC1",
+          "name": "P4-area-bagno",
+          "code": "DADBC1",
+          "x": 900,
+          "y": 540,
+          "state": false
+        },
+        {
+          "id": 1759592748460.072,
+          "lightId": "DADBF1",
+          "name": "Shower",
+          "code": "DADBF1",
+          "x": 960,
+          "y": 210,
+          "state": false
+        },
+        {
+          "id": 1759592795700.4927,
+          "lightId": "DADCC1",
+          "name": "P2-area-corridoio",
+          "code": "DADCC1",
+          "x": 645,
+          "y": 480,
+          "state": false
+        }
+      ],
+      "furniture": [
+        {
+          "id": 1759592395240.5623,
+          "label": "CAMERA",
+          "x": 0,
+          "y": 0,
+          "width": 765,
+          "height": 375,
+          "rotated": false
+        },
+        {
+          "id": 1759592436424.184,
+          "label": "",
+          "x": 15,
+          "y": 225,
+          "width": 60,
+          "height": 75,
+          "rotated": false
+        },
+        {
+          "id": 1759592473984.657,
+          "label": "Letto",
+          "x": 0,
+          "y": 90,
+          "width": 405,
+          "height": 225,
+          "rotated": false
+        },
+        {
+          "id": 1759592526077.8828,
+          "label": "",
+          "x": 15,
+          "y": 120,
+          "width": 60,
+          "height": 75,
+          "rotated": false
+        },
+        {
+          "id": 1759592549947.7324,
+          "label": "",
+          "x": 0,
+          "y": 0,
+          "width": 60,
+          "height": 75,
+          "rotated": false
+        },
+        {
+          "id": 1759592574705.2737,
+          "label": "Cabina Armadio",
+          "x": 0,
+          "y": 375,
+          "width": 570,
+          "height": 315,
+          "rotated": false
+        },
+        {
+          "id": 1759592633040.7878,
+          "label": "Serretta",
+          "x": 765,
+          "y": 210,
+          "width": 315,
+          "height": 90,
+          "rotated": false
+        },
+        {
+          "id": 1759592682686.2693,
+          "label": "Doccia",
+          "x": 765,
+          "y": 300,
+          "width": 315,
+          "height": 75,
+          "rotated": false
+        },
+        {
+          "id": 1759592708120.7017,
+          "label": "Bagno",
+          "x": 765,
+          "y": 375,
+          "width": 315,
+          "height": 315,
+          "rotated": false
+        }
+      ]
+    },
+    {
+      "id": 1759588491253.3135,
+      "name": "NICOLO",
+      "x": 660,
+      "y": 360,
+      "width": 360,
+      "height": 220,
+      "lights": [
+        {
+          "id": 1759593387233.1208,
+          "lightId": "C001C1",
+          "name": "N1-area-camera",
+          "code": "C001C1",
+          "x": 495,
+          "y": 240,
+          "state": false
+        },
+        {
+          "id": 1759593394219.452,
+          "lightId": "C001B1",
+          "name": "N2-area-bagno",
+          "code": "C001B1",
+          "x": 405,
+          "y": 480,
+          "state": false
+        }
+      ],
+      "furniture": [
+        {
+          "id": 1759593302644.9448,
+          "label": "Camera",
+          "x": 15,
+          "y": 0,
+          "width": 1005,
+          "height": 390,
+          "rotated": false
+        },
+        {
+          "id": 1759593330877.2515,
+          "label": "Cabina Armadio",
+          "x": 735,
+          "y": 390,
+          "width": 285,
+          "height": 255,
+          "rotated": false
+        },
+        {
+          "id": 1759593365891.385,
+          "label": "Bagno",
+          "x": 15,
+          "y": 390,
+          "width": 720,
+          "height": 255,
+          "rotated": false
+        },
+        {
+          "id": 1759593413957.7832,
+          "label": "porta bagno",
+          "x": 585,
+          "y": 375,
+          "width": 135,
+          "height": 30,
+          "rotated": false
+        },
+        {
+          "id": 1759593443588.2275,
+          "label": "Porta Camera",
+          "x": 1005,
+          "y": 195,
+          "width": 30,
+          "height": 105,
+          "rotated": true
+        },
+        {
+          "id": 1759593476038.9329,
+          "label": "Letto",
+          "x": 630,
+          "y": 0,
+          "width": 390,
+          "height": 165,
+          "rotated": false
+        },
+        {
+          "id": 1759593516160.4617,
+          "label": "Desk",
+          "x": 15,
+          "y": 195,
+          "width": 240,
+          "height": 105,
+          "rotated": false
+        },
+        {
+          "id": 1759593543504.4204,
+          "label": "libreria",
+          "x": 15,
+          "y": 360,
+          "width": 450,
+          "height": 30,
+          "rotated": false
+        },
+        {
+          "id": 1759594359891.358,
+          "label": "",
+          "x": 930,
+          "y": 30,
+          "width": 75,
+          "height": 105,
+          "rotated": false
+        }
+      ]
+    },
+    {
+      "id": 1759588511735.7197,
+      "name": "LAVANDERIA",
+      "x": 820,
+      "y": 160,
+      "width": 200,
+      "height": 200,
+      "lights": [
+        {
+          "id": 1759594332728.3682,
+          "lightId": "0A55C1",
+          "name": "L1-area-lavanderia",
+          "code": "0A55C1",
+          "x": 600,
+          "y": 285,
+          "state": false
+        }
+      ],
+      "furniture": [
+        {
+          "id": 1759594160986.7896,
+          "label": "",
+          "x": 390,
+          "y": 45,
+          "width": 465,
+          "height": 600,
+          "rotated": false
+        },
+        {
+          "id": 1759594179441.986,
+          "label": "Lavatrice",
+          "x": 390,
+          "y": 45,
+          "width": 120,
+          "height": 135,
+          "rotated": false
+        },
+        {
+          "id": 1759594230377.1355,
+          "label": "Lavandino",
+          "x": 390,
+          "y": 345,
+          "width": 150,
+          "height": 165,
+          "rotated": false
+        },
+        {
+          "id": 1759594282855.4314,
+          "label": "Asciugatrice",
+          "x": 390,
+          "y": 195,
+          "width": 120,
+          "height": 135,
+          "rotated": false
+        },
+        {
+          "id": 1759594314112.9062,
+          "label": "Armadio",
+          "x": 765,
+          "y": 135,
+          "width": 90,
+          "height": 345,
+          "rotated": false
+        }
+      ]
+    },
+    {
+      "id": 1759588542824.7178,
+      "name": "BILOCALE",
+      "x": 1020,
+      "y": 160,
+      "width": 260,
+      "height": 420,
+      "lights": [
+        {
+          "id": 1759590808184.125,
+          "lightId": "D00DC2",
+          "name": "K2-area-cucina",
+          "code": "D00DC2",
+          "x": 180,
+          "y": 60,
+          "state": false
+        },
+        {
+          "id": 1759590826687.648,
+          "lightId": "D00D01",
+          "name": "K1-area-porta-scalaD-office-Danilea",
+          "code": "D00D01",
+          "x": 375,
+          "y": 60,
+          "state": false
+        },
+        {
+          "id": 1759593210022.0225,
+          "lightId": "D00DB1",
+          "name": "K5-area-bagno",
+          "code": "D00DB1",
+          "x": 930,
+          "y": 45,
+          "state": false
+        },
+        {
+          "id": 1759593257806.3083,
+          "lightId": "D00DD4",
+          "name": "K4-area-disimpegno",
+          "code": "D00DD4",
+          "x": 615,
+          "y": 60,
+          "state": false
+        },
+        {
+          "id": 1759593266146.7427,
+          "lightId": "D00D32",
+          "name": "K6-area-letto",
+          "code": "D00D32",
+          "x": 825,
+          "y": 195,
+          "state": false
+        }
+      ],
+      "furniture": [
+        {
+          "id": 1759592949998.6477,
+          "label": "Ufficio",
+          "x": 0,
+          "y": 0,
+          "width": 585,
+          "height": 405,
+          "rotated": false
+        },
+        {
+          "id": 1759592992102.0137,
+          "label": "Bagnetto",
+          "x": 705,
+          "y": 0,
+          "width": 390,
+          "height": 165,
+          "rotated": false
+        },
+        {
+          "id": 1759593016319.514,
+          "label": "Camera Rosa",
+          "x": 585,
+          "y": 165,
+          "width": 510,
+          "height": 240,
+          "rotated": false
+        },
+        {
+          "id": 1759593097680.5496,
+          "label": "Desk",
+          "x": 30,
+          "y": 180,
+          "width": 300,
+          "height": 135,
+          "rotated": false
+        },
+        {
+          "id": 1759593155161.7136,
+          "label": "Porta Scala D",
+          "x": 375,
+          "y": 375,
+          "width": 120,
+          "height": 30,
+          "rotated": false
+        },
+        {
+          "id": 1759593184407.6624,
+          "label": "Armadio Rosa",
+          "x": 750,
+          "y": 345,
+          "width": 270,
+          "height": 60,
+          "rotated": false
+        },
+        {
+          "id": 1759593224760.051,
+          "label": "doccia",
+          "x": 1005,
+          "y": 0,
+          "width": 90,
+          "height": 165,
+          "rotated": false
+        }
+      ]
+    }
+  ]
+}
