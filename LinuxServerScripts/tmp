@@ -1,0 +1,3 @@
+/root/Domotica/LinuxServerScripts
+/root/Domotica/LinuxServerScripts/RFreceiver.offset
+TCP server listen on address : {"address":"0.0.0.0","family":"IPv4","port":1234}

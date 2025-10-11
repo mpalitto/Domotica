@@ -1,3 +1,9 @@
+# Ignore specific log files
+LinuxServerScripts/.*.log*
+
+# Ignore temporary file
+LinuxServerScripts/tmp/
+
 # Windows image file caches
 Thumbs.db
 ehthumbs.db
