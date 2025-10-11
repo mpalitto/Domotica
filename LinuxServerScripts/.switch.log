@@ -58,106 +58,28 @@ sONOFF[K4-area-disimpegno]=D00DD4
 sONOFF[K5-area-bagno]=D00DB1
 sONOFF[K6-area-letto]=D00D32
 filtering out...TCP server listen on address : {"address":"0.0.0.0","family":"IPv4","port":1234}
-filtering out...updating file...
 filtering out...TCP server listen on address : {"address":"0.0.0.0","family":"IPv4","port":1234}
-filtering out...updating file...
-filtering out...TCP server listen on address : {"address":"0.0.0.0","family":"IPv4","port":1234}
-filtering out...updating file...
-filtering out...TCP server listen on address : {"address":"0.0.0.0","family":"IPv4","port":1234}
-filtering out...updating file...
-filtering out...TCP server listen on address : {"address":"0.0.0.0","family":"IPv4","port":1234}
-filtering out...updating file...
-filtering out...TCP server listen on address : {"address":"0.0.0.0","family":"IPv4","port":1234}
-filtering out...updating file...
-filtering out...TCP server listen on address : {"address":"0.0.0.0","family":"IPv4","port":1234}
-filtering out...updating file...
-filtering out...TCP server listen on address : {"address":"0.0.0.0","family":"IPv4","port":1234}
-filtering out...updating file...
-filtering out...TCP server listen on address : {"address":"0.0.0.0","family":"IPv4","port":1234}
-filtering out...updating file...
-filtering out...TCP server listen on address : {"address":"0.0.0.0","family":"IPv4","port":1234}
-filtering out...updating file...
-filtering out...TCP server listen on address : {"address":"0.0.0.0","family":"IPv4","port":1234}
-filtering out...updating file...
-filtering out...TCP server listen on address : {"address":"0.0.0.0","family":"IPv4","port":1234}
-filtering out...updating file...
-filtering out...TCP server listen on address : {"address":"0.0.0.0","family":"IPv4","port":1234}
-filtering out...updating file...
-filtering out...TCP server listen on address : {"address":"0.0.0.0","family":"IPv4","port":1234}
-filtering out...updating file...
-filtering out...TCP server listen on address : {"address":"0.0.0.0","family":"IPv4","port":1234}
-filtering out...updating file...
-filtering out...TCP server listen on address : {"address":"0.0.0.0","family":"IPv4","port":1234}
-filtering out...updating file...
-filtering out...TCP server listen on address : {"address":"0.0.0.0","family":"IPv4","port":1234}
-filtering out...updating file...
-filtering out...TCP server listen on address : {"address":"0.0.0.0","family":"IPv4","port":1234}
-filtering out...updating file...
-filtering out...TCP server listen on address : {"address":"0.0.0.0","family":"IPv4","port":1234}
-filtering out...updating file...
-filtering out...TCP server listen on address : {"address":"0.0.0.0","family":"IPv4","port":1234}
-filtering out...updating file...
-filtering out...TCP server listen on address : {"address":"0.0.0.0","family":"IPv4","port":1234}
-filtering out...updating file...
-filtering out...TCP server listen on address : {"address":"0.0.0.0","family":"IPv4","port":1234}
-filtering out...updating file...
-filtering out...TCP server listen on address : {"address":"0.0.0.0","family":"IPv4","port":1234}
-filtering out...updating file...
-filtering out...TCP server listen on address : {"address":"0.0.0.0","family":"IPv4","port":1234}
-filtering out...updating file...
-filtering out...TCP server listen on address : {"address":"0.0.0.0","family":"IPv4","port":1234}
-filtering out...updating file...
-filtering out...TCP server listen on address : {"address":"0.0.0.0","family":"IPv4","port":1234}
-filtering out...Client connect. Client local address : 192.168.1.77:1234. client remote address : 192.168.1.151:49155
-filtering out...Client connect. Client local address : 192.168.1.77:1234. client remote address : 192.168.1.111:58015
-filtering out...YESSS
-filtering out...
-now serving: 4A89A / P-CORRIDOIO-PADRONALE
-P-CORRIDOIO-PADRONALE Button 1
-screen -S arduino433tx -X stuff "s:DADBC1"
-filtering out...
-filtering out...96624 : F4A89A1101 Rec: nodeMCU-1
-filtering out...diff: undefined vs 0 N: 0
-filtering out...appling time compensation:4 compensationN: 1
-filtering out...96624 : F4A89A1101 Rec: nodeMCU-0
-filtering out...diff: 21 vs 21 N: 1
-filtering out...updating file...
-filtering out...TCP server listen on address : {"address":"0.0.0.0","family":"IPv4","port":1234}
-filtering out...updating file...
-filtering out...TCP server listen on address : {"address":"0.0.0.0","family":"IPv4","port":1234}
-filtering out...updating file...
-filtering out...TCP server listen on address : {"address":"0.0.0.0","family":"IPv4","port":1234}
-filtering out...updating file...
-filtering out...TCP server listen on address : {"address":"0.0.0.0","family":"IPv4","port":1234}
-filtering out...updating file...
-filtering out...TCP server listen on address : {"address":"0.0.0.0","family":"IPv4","port":1234}
-filtering out...updating file...
-filtering out...TCP server listen on address : {"address":"0.0.0.0","family":"IPv4","port":1234}
-filtering out...updating file...
-filtering out...TCP server listen on address : {"address":"0.0.0.0","family":"IPv4","port":1234}
-filtering out...updating file...
-filtering out...TCP server listen on address : {"address":"0.0.0.0","family":"IPv4","port":1234}
-filtering out...Client connect. Client local address : 192.168.1.77:1234. client remote address : 192.168.1.111:54208
-now serving: 4A0E9 / S/C-LIBRERIA-FRIGO
-S/C-LIBRERIA-FRIGO Button 5
-screen -S arduino433tx -X stuff "s:5EA151"
-filtering out...
-filtering out...494127 : F4A0E91005 Rec: nodeMCU-0
-filtering out...diff: undefined vs 0 N: 0
-filtering out...Client connect. Client local address : 192.168.1.77:1234. client remote address : 192.168.1.169:52083
-filtering out...appling time compensation:33 compensationN: 1
-filtering out...494127 : F4A0E91005 Rec: nodeMCU-2 diff: 166 vs 166 N: 1
-filtering out...Client connect. Client local address : 192.168.1.77:1234. client remote address : 192.168.1.151:49156
-filtering out...appling time compensation:245 compensationN: 1
-filtering out...494127 : F4A0E91005 Rec: nodeMCU-1
-filtering out...diff: 1228 vs 1228 N: 1
-filtering out...appling time compensation:295 compensationN: 1
-filtering out...494127 : F4A0E91005 Rec: nodeMCU-1 diff: 1478 vs 1478 N: 1
-now serving: 4A77D / BL-DISIMPEGNO
-BL-DISIMPEGNO Button 4
-screen -S arduino433tx -X stuff "s:D00D01"
-filtering out...506154 : F4A77D1004 Rec: nodeMCU-0 diff: undefined vs 0 N: 0
-filtering out...appling time compensation:0 compensationN: 1
-filtering out...506154 : F4A77D1004 Rec: nodeMCU-1 diff: 1 vs 1 N: 1
-filtering out...updating file...
+filtering out.../root/Domotica/LinuxServerScripts
+filtering out.../root/Domotica/LinuxServerScripts
+filtering out.../root/Domotica/LinuxServerScripts
+filtering out.../root/Domotica/LinuxServerScripts
+filtering out.../root/Domotica/LinuxServerScripts
+filtering out.../root/Domotica/LinuxServerScripts
+filtering out.../root/Domotica/LinuxServerScripts
+filtering out.../root/Domotica/LinuxServerScripts
+filtering out.../root/Domotica/LinuxServerScripts
+filtering out.../root/Domotica/LinuxServerScripts
+filtering out.../root/Domotica/LinuxServerScripts
+filtering out.../root/Domotica/LinuxServerScripts
+filtering out.../root/Domotica/LinuxServerScripts
+filtering out.../root/Domotica/LinuxServerScripts
+filtering out.../root/Domotica/LinuxServerScripts
+filtering out.../root/Domotica/LinuxServerScripts
+filtering out.../root/Domotica/LinuxServerScripts
+filtering out.../root/Domotica/LinuxServerScripts
+filtering out.../root/Domotica/LinuxServerScripts
+filtering out.../root/Domotica/LinuxServerScripts
+filtering out.../root/Domotica/LinuxServerScripts
+filtering out.../root/Domotica/LinuxServerScripts
+filtering out.../root/Domotica/LinuxServerScripts/RFreceiver.offset
 filtering out...TCP server listen on address : {"address":"0.0.0.0","family":"IPv4","port":1234}

@@ -11,7 +11,10 @@ var stats = {};
 var alpha = 0.8;
 var allowedButtons = {'100': true, '101': true, '002': true, '003': true, '004': true, '005': true };
 var offset = {}; // offset for syncing each RF receiver
-
+const RF_RECEIVER_PATH = process.env.IoTserverScripts;
+const rxOffsetFile=`${RF_RECEIVER_PATH}/RFreceiver.offset`;
+console.log(RF_RECEIVER_PATH);
+console.log(rxOffsetFile);
 const storeData = (data, path) => {
   try {
       console.log('updating file...');
@@ -21,7 +24,7 @@ const storeData = (data, path) => {
   }
 }
 
-setInterval(function() {storeData(offset, '$IoTserverScripts/RFreceiver.offset')}, 600000); //every 10min
+setInterval(function() {storeData(offset, rxOffestFile)}, 600000); //every 10min
 //setInterval(console.log('Updateing $IoTserverScripts/RFreceiver.offset'), 6000); //every 10min
 
 const loadData = (path) => {
@@ -33,7 +36,7 @@ const loadData = (path) => {
   }
 }
 
-var offsetSTR = loadData('$IoTserverScripts/RFreceiver.offset');
+var offsetSTR = loadData(rxOffsetFile);
 if(offsetSTR) {
 	offset = JSON.parse(offsetSTR);
 }
