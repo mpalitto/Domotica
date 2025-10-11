@@ -15,7 +15,7 @@ var fs = require('fs');
 //   }
 // }
 // 
-// setInterval(function() {storeData(offset, '/root/RFreceiver.offset')}, 600000); //every 10min
+// setInterval(function() {storeData(offset, '$IoTserverScripts/RFreceiver.offset')}, 600000); //every 10min
 //--------------------------------------------------------------------------------------------
 // Load data from file
 //
@@ -28,7 +28,7 @@ var fs = require('fs');
 //   }
 // }
 // 
-// var offsetSTR = loadData('/root/RFreceiver.offset');
+// var offsetSTR = loadData('$IoTserverScripts/RFreceiver.offset');
 // if(offsetSTR) {
 // 	offset = JSON.parse(offsetSTR);
 // }

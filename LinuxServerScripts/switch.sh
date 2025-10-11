@@ -20,8 +20,8 @@ declare -A Switch #associative array for easy code reading
 #   Switch[$code]=$name
 #done
 
-IDs=($(sed 's/#.*//;/^$/d' /root/wallSwitches.list))
-Names=($(sed '/^#/d;s/.*# \([^ ]\+\).*/\1/;/^$/d' /root/wallSwitches.list))
+IDs=($(sed 's/#.*//;/^$/d' $IoTserverScripts/wallSwitches.list))
+Names=($(sed '/^#/d;s/.*# \([^ ]\+\).*/\1/;/^$/d' $IoTserverScripts/wallSwitches.list))
 n=0
 for ID in ${IDs[@]}; do
   echo "Switch[$ID]=${Names[$n]}"
@@ -36,12 +36,12 @@ unset sONOFF
 declare -A sONOFF #associative array for easy code reading
 
 #per qualche motivo a me ignoto questa versione non funziona
-#sed -n "/^V/{s/^V s://;s/\([^ ]\+\) # \([^ ]\+\).*/\2 \1/;p}" /root/sONOFF.list | while read name code; do 
+#sed -n "/^V/{s/^V s://;s/\([^ ]\+\) # \([^ ]\+\).*/\2 \1/;p}" $IoTserverScripts/sONOFF.list | while read name code; do 
 #  sONOFF[$name]=$code
 #done
 
-IDs=($(sed -n "/^V/{s/V s://; s/ .*//; p}" /root/sONOFF.list))
-Names=($(sed -n "/^V/{s/.*# //; s/ - .*//; p}" /root/sONOFF.list))
+IDs=($(sed -n "/^V/{s/V s://; s/ .*//; p}" $IoTserverScripts/sONOFF.list))
+Names=($(sed -n "/^V/{s/.*# //; s/ - .*//; p}" $IoTserverScripts/sONOFF.list))
 n=0
 for ID in ${IDs[@]}; do
   #echo "sONOFF[${Names[$n]}]=$ID"
@@ -54,14 +54,14 @@ done
 # command for sending data through the Arduino: screen -S arduino433tx -X stuff "s:B1E461"
           #screen -S arduino433tx -X stuff "s:${sONOFF[]}"
 
-echo -n > /root/.lastSwitch
-tail -n0 -f /root/tmp | while read line; do 
+echo -n > $IoTserverScripts/.lastSwitch
+tail -n0 -f $IoTserverScripts/tmp | while read line; do 
   #echo $line
   #Switch="${lastSwitch:1:5}${lastSwitch:9}"
   SWcode="${line:9:5}${line:17:1}"
   selection=""
-  if [ "${line:0:6}" == "0A1400" ] && [ ! "$(grep $SWcode /root/.lastSwitch)" ]; then
-     echo "$SWcode" >> /root/.lastSwitch; (sleep 2 && grep -v $SWcode /root/.lastSwitch > /root/.lastSwitch.tmp; mv /root/.lastSwitch.tmp /root/.lastSwitch) &
+  if [ "${line:0:6}" == "0A1400" ] && [ ! "$(grep $SWcode $IoTserverScripts/.lastSwitch)" ]; then
+     echo "$SWcode" >> $IoTserverScripts/.lastSwitch; (sleep 2 && grep -v $SWcode $IoTserverScripts/.lastSwitch > $IoTserverScripts/.lastSwitch.tmp; mv $IoTserverScripts/.lastSwitch.tmp $IoTserverScripts/.lastSwitch) &
 
     SWC=${SWcode:0:5}
     SWN=${Switch[${SWcode:0:5}]}
@@ -496,7 +496,7 @@ tail -n0 -f /root/tmp | while read line; do
     if [ "$selection" ]; then
       echo screen -S arduino433tx -X stuff '"'s:$selection'"'
       screen -S arduino433tx -X stuff "s:$selection"
-      #echo s:$selection >> /root/.switch.command
+      #echo s:$selection >> $IoTserverScripts/.switch.command
       #sleep 1
     else
       echo dismissing code

@@ -1,8 +1,8 @@
 #!/bin/bash
 if [ -e /dev/ttyACM0 ]; then
-  echo "starting SCREEN - $(date)" >> /root/.arduinoTX.log
+  echo "starting SCREEN - $(date)" >> $IoTserverScripts/.arduinoTX.log
   screen -S arduino433tx -X quit
   screen -S arduino433tx -d -m /dev/ttyACM0 9600
 else
-  echo "Arduino found - $(date)" >> /root/.arduinoTX.log
+  echo "Arduino found - $(date)" >> $IoTserverScripts/.arduinoTX.log
 fi

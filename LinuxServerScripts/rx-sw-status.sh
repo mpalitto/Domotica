@@ -1,9 +1,9 @@
 #!/bin/bash
 nogood=""
 rx=""
-sed '/^$/d' /root/switches.status > /root/switches.new.status
-mv /root/switches.new.status /root/switches.status
-echo >> /root/switches.status
+sed '/^$/d' $IoTserverScripts/switches.status > $IoTserverScripts/switches.new.status
+mv $IoTserverScripts/switches.new.status $IoTserverScripts/switches.status
+echo >> $IoTserverScripts/switches.status
 #while true
 #do
 #  stdbuf -o0 netcat -l 1234 | tee -a /var/log/faillog | \
@@ -20,17 +20,17 @@ do
       do 
         echo "received: $deviceid $status"
         if [ "$deviceid" ] && [ "$status" ]; then 
-          sed "/$deviceid/d; /^$/ i $deviceid $status" /root/switches.status > /root/switches.new.status
+          sed "/$deviceid/d; /^$/ i $deviceid $status" $IoTserverScripts/switches.status > $IoTserverScripts/switches.new.status
         else
           echo NOGOOD found
           notgood=true
         fi
       done
       if [ $nogood ]; then notgood=""; continue; fi
-      # echo NEW:; cat /root/switches.new.status
-      sed '/^$/d' /root/switches.new.status > /root/switches.status
-      echo >> /root/switches.status
-      echo ACTUAL:; cat /root/switches.status
+      # echo NEW:; cat $IoTserverScripts/switches.new.status
+      sed '/^$/d' $IoTserverScripts/switches.new.status > $IoTserverScripts/switches.status
+      echo >> $IoTserverScripts/switches.status
+      echo ACTUAL:; cat $IoTserverScripts/switches.status
     rx=""
   else
     #keep storing

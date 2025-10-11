@@ -21,8 +21,8 @@ const storeData = (data, path) => {
   }
 }
 
-setInterval(function() {storeData(offset, '/root/RFreceiver.offset')}, 600000); //every 10min
-//setInterval(console.log('Updateing /root/RFreceiver.offset'), 6000); //every 10min
+setInterval(function() {storeData(offset, '$IoTserverScripts/RFreceiver.offset')}, 600000); //every 10min
+//setInterval(console.log('Updateing $IoTserverScripts/RFreceiver.offset'), 6000); //every 10min
 
 const loadData = (path) => {
   try {
@@ -33,7 +33,7 @@ const loadData = (path) => {
   }
 }
 
-var offsetSTR = loadData('/root/RFreceiver.offset');
+var offsetSTR = loadData('$IoTserverScripts/RFreceiver.offset');
 if(offsetSTR) {
 	offset = JSON.parse(offsetSTR);
 }

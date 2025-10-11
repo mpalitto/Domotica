@@ -1,6 +1,6 @@
 #!/bin/bash
 
 while true; do
-  /root/serial 2>> /root/tmp
+  $IoTserverScripts/serial 2>> $IoTserverScripts/tmp
   sleep 1
 done

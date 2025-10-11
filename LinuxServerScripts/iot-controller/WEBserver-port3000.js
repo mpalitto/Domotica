@@ -9,7 +9,8 @@ const PORT = 3000;
 
 // Use __dirname to save in the same directory as server.js
 const MAP_CONFIG_PATH = path.join(__dirname, 'map-conf.json');
-const SONOFF_LIST_PATH = '/root/sONOFF.list';
+const SONOFF_LIST_PATH = process.env.IoTserverScripts
+const sONOFFlist = `${SONOFF_LIST_PATH}/sONOFF.list`;
 
 // Cache for parsed configuration
 let cachedConfig = null;
@@ -17,7 +18,7 @@ let cachedConfig = null;
 // Parse sONOFF.list file
 async function parseSONOFFList() {
     try {
-        const content = await fs.readFile(SONOFF_LIST_PATH, 'utf-8');
+        const content = await fs.readFile(sONOFFlist, 'utf-8');
         const lines = content.split('\n');
         const areas = {};
         let currentArea = null;

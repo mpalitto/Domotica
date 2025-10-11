@@ -16,8 +16,8 @@ function toggleAlarm {
 alarm="off"
 c=0
 #logfn e il log file name, la variabile viene definita nella shell
-#con il comando: export logfn="/root/.current_$(date +%d-$m-%Y).log"
-logfn="/root/.current_$(date +%d-%m-%Y).log"
+#con il comando: export logfn="$IoTserverScripts/.current_$(date +%d-$m-%Y).log"
+logfn="$IoTserverScripts/.current_$(date +%d-%m-%Y).log"
 #se il file logfn.0 esiste gia vuol dire che ce stata almeno una interruzione
 #e quindi rinominiamo il file in modo che se esiste logfn.N, allora fn sara 
 #logfn.N+1
@@ -37,7 +37,7 @@ fi
 let triggerOFF=triggerON-10
 
 #questo e il loop principale che implementa la logica
-nodejs /root/currentSocketServer.js | while read line
+nodejs $IoTserverScripts/currentSocketServer.js | while read line
 do 
    p=$c
    c=${line//* /} 

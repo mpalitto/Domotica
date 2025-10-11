@@ -6,4 +6,4 @@ screen -S current -X quit
 #start new session in ditached mode
 screen -S current -d -m
 #start currentAllarm.sh 
-screen -S current -X stuff "/root/currentAlarm.sh 300\n"
+screen -S current -X stuff "$IoTserverScripts/currentAlarm.sh 300\n"

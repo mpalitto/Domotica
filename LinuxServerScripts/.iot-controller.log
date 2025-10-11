@@ -1,0 +1,8 @@
+Loading configuration from /root/sONOFF.list
+Configuration loaded successfully
+IoT House Controller running on http://192.168.1.77:3000
+Map configuration file: /root/Domotica/LinuxServerScripts/iot-controller/map-conf.json
+Loading configuration from $IoTserverScripts/sONOFF.list
+Configuration loaded successfully
+IoT House Controller running on http://192.168.1.77:3000
+Map configuration file: /root/Domotica/LinuxServerScripts/iot-controller/map-conf.json

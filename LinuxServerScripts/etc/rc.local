@@ -11,20 +11,23 @@
 #
 # By default this script does nothing.
 sleep 3
-echo -n > /root/tmp
-echo -n > /root/.lastSwitch
-echo -n > /root/.switch.log
-/root/startDisplay.sh
-/root/startRFreceiverServer.sh
-#nohup /root/screenWrapper.sh & #set connection with arduino
-/root/startRFarduinoTX.sh
-/root/startSwitch.sh         # switch press to light command
-/root/startIoT-WEBui.sh      # WEB UI to turn lights on/off port: 3000
-nohup /root/heartbeat.sh &   #start sending heartbeats to arduinoTX
-nohup /root/sendScanned.sh & #HP printer for sending scanned docs to email
+# export IoTserverScripts="/root"
+export IoTserverScripts="/root/Domotica/LinuxServerScripts"
+$IoTserverScripts/update_IoTserverScripts_folder.sh
+echo -n > $IoTserverScripts/tmp
+echo -n > $IoTserverScripts/.lastSwitch
+echo -n > $IoTserverScripts/.switch.log
+$IoTserverScripts/startDisplay.sh
+$IoTserverScripts/startRFreceiverServer.sh
+#nohup $IoTserverScripts/screenWrapper.sh & #set connection with arduino
+$IoTserverScripts/startRFarduinoTX.sh
+$IoTserverScripts/startSwitch.sh         # switch press to light command
+$IoTserverScripts/startIoT-WEBui.sh      # WEB UI to turn lights on/off port: 3000
+nohup $IoTserverScripts/heartbeat.sh &   #start sending heartbeats to arduinoTX
+nohup $IoTserverScripts/sendScanned.sh & #HP printer for sending scanned docs to email
 # iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
-# screen -S rx-sw-status -dm /root/rx-sw-status.sh
-# screen -S "rx-sw-status-clear" -dm /root/rx-sw-status-clear.sh
-/root/startCurrentAlarm.sh
-/root/startPIR.sh
+# screen -S rx-sw-status -dm $IoTserverScripts/rx-sw-status.sh
+# screen -S "rx-sw-status-clear" -dm $IoTserverScripts/rx-sw-status-clear.sh
+$IoTserverScripts/startCurrentAlarm.sh
+$IoTserverScripts/startPIR.sh
 exit 0
