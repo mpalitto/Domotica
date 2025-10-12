@@ -1,14 +1,28 @@
-#!/usr/bin/env nodejs
+#!/usr/bin/env node
 // Import net module.
 var net = require('net');
 var fs = require('fs');
 const EventEmitter = require('events');
 
-// this script starts a TCP server and waits for a display to connect...
-// from a different script, it receives messages/data from the STDIN
-// (the other script uses a command as "screen -S displayServer -X stuff "$c\n" # invia la misura della corrente al display")
-// the data received will be then sent to the display...
+// ============================================================================
+// TCP SERVER WITH STDIN-TO-CLIENT RELAY
+// ============================================================================
+// This script creates a TCP server that:
+// 1. Listens for incoming TCP client connections (e.g., display devices)
+// 2. Receives data from STDIN (piped from other scripts/processes)
+// 3. Forwards STDIN data to connected TCP clients
 //
+// The script is meant to run inside a detached screen session (e.g., "displayServer")
+// Data to be displayed can be sent to the STDIN of the screen session from 
+// command line or from another script
+//
+// Example usage from external script:
+//   screen -S displayServer -X stuff "$data\n"
+//
+// or by re-attaching to the screen session "screen -r displayServer" and entering
+// text manually. Once pressed Return the message get sent to the display
+// ============================================================================
+
 function stdinLineByLine() {
 	  const stdin = new EventEmitter();
 	  var buff = "";

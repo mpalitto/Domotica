@@ -9,6 +9,11 @@
 #
 # N.B. dovrebbe essere usato startCurrentAlarm.sh per avviarlo
 # N.B. dovrebbe essere avviato una volta al giorno as crontab job
+
+# make sure we are using the node.js environment so that 
+# the command "node" can be found
+. /root/.nvm/nvm.sh  
+
 function toggleAlarm { 
   screen -S arduino433tx -X stuff "s:5EAAC1" 
   echo Alarm $1
@@ -37,7 +42,7 @@ fi
 let triggerOFF=triggerON-10
 
 #questo e il loop principale che implementa la logica
-nodejs $IoTserverScripts/currentSocketServer.js | while read line
+node $IoTserverScripts/currentSocketServer.js | while read line
 do 
    p=$c
    c=${line//* /} 

@@ -3,4 +3,5 @@
 # screen -S displayServer -X stuff 'text to be displayed'
 screen -S displayServer -X quit
 screen -S displayServer -d -m
-screen -S displayServer -X stuff "nodejs $IoTserverScripts/displayServer.js\n"
+#screen -S displayServer -X stuff "nodejs $IoTserverScripts/displayServer.js\n"
+screen -S displayServer -X stuff "bash -c '. /root/.nvm/nvm.sh; node $IoTserverScripts/displayServer.js'\n"
