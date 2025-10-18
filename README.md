@@ -49,31 +49,28 @@ lights
    These remote controllers send RF (radio frequency) signals, each corresponding to a different control action.
 
 2. **RF Signal Transmission**:  
-   The RF signals from the remote controllers are transmitted to their respective receivers.
+   The RF signals from the remote controllers are transmitted to the receivers spread-out in the home.
 
 3. **Lightwave Codes Layer**:  
-   Each RF signal is interpreted by Lightwave codes, which standardize the input across the system. This acts as an intermediary layer between the RF signal and the receivers.
+   Each remote button corresponds to a Lightwave code.
 
 4. **ESP8266 + RF-Rx (Receivers 1 to M)**:  
-   The ESP8266 modules are connected to RF receivers (RF-Rx). Each ESP8266+RF-Rx module receives RF signals from the remote controllers and converts these signals into Wi-Fi signals.
+   The ESP8266 modules are connected to RF receivers (RF-Rx). Each ESP8266+RF-Rx module receives RF signals from the remote controllers and converts these signals into codes identifying remote key pressed and forwarded to the central linux home server through Wi-Fi packets.
 
 5. **Wi-Fi Signal Transmission**:  
    The Wi-Fi signals, now carrying the command data, are sent across the network.
 
-6. **Button Codes Layer**:  
-   The Wi-Fi signals are interpreted as button codes that correspond to specific control actions, such as turning lights on or off. These button codes are processed centrally.
-
 7. **Central Linux Server + Arduino + RF-Tx**:  
-   The central server, running Linux and connected to an Arduino with an RF transmitter (RF-Tx), receives the button codes and determines the appropriate response. It sends the corresponding RF sONOFF codes to the appropriate devices (sONOFF).
+   The central server, running Linux and connected to an Arduino with an RF transmitter (RF-Tx), receives the button codes and determines the appropriate response. It sends the corresponding RF sONOFF codes which identifies the appropriate devices (sONOFF).
 
 8. **RF sONOFF Codes Transmission**:  
    These RF sONOFF codes are sent out to the sONOFF RF modules.
 
 9. **sONOFF RF Modules (1 to L)**:  
-   Each sONOFF RF module receives the RF sONOFF code and translates it into a control signal for the connected lights.
+   Each sONOFF RF module receives the RF sONOFF code and translates it the switch action for the connected lights.
 
 10. **Lights (1 to L)**:  
-    The sONOFF modules are connected to lights, which respond to the RF sONOFF signals by turning on or off according to the command.
+    The sONOFF modules are connected to lights.
 
 In summary, this system architecture facilitates the wireless control of multiple lights, where remote controllers send RF signals that are processed by ESP8266 receivers and a central server to ultimately trigger actions in sONOFF RF modules that control the lights.
 

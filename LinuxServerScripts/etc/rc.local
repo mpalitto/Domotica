@@ -1,0 +1,33 @@
+#!/bin/sh -e
+#
+# rc.local
+#
+# This script is executed at the end of each multiuser runlevel.
+# Make sure that the script will "exit 0" on success or any other
+# value on error.
+#
+# In order to enable or disable this script just change the execution
+# bits.
+#
+# By default this script does nothing.
+sleep 3
+# export IoTserverScripts="/root"
+export IoTserverScripts="/root/Domotica/LinuxServerScripts"
+$IoTserverScripts/update_IoTserverScripts_folder.sh
+echo -n > $IoTserverScripts/tmp
+echo -n > $IoTserverScripts/.lastSwitch
+echo -n > $IoTserverScripts/.switch.log
+$IoTserverScripts/startDisplay.sh
+$IoTserverScripts/startRFreceiverServer.sh
+#nohup $IoTserverScripts/screenWrapper.sh & #set connection with arduino
+$IoTserverScripts/startRFarduinoTX.sh
+$IoTserverScripts/startSwitch.sh         # switch press to light command
+$IoTserverScripts/startIoT-WEBui.sh      # WEB UI to turn lights on/off port: 3000
+nohup $IoTserverScripts/heartbeat.sh &   #start sending heartbeats to arduinoTX
+nohup $IoTserverScripts/sendScanned.sh & #HP printer for sending scanned docs to email
+# iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+# screen -S rx-sw-status -dm $IoTserverScripts/rx-sw-status.sh
+# screen -S "rx-sw-status-clear" -dm $IoTserverScripts/rx-sw-status-clear.sh
+$IoTserverScripts/startCurrentAlarm.sh
+$IoTserverScripts/startPIR.sh
+exit 0
