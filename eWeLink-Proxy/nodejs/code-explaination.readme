@@ -1,0 +1,288 @@
+CODE EXPLANATION - eWeLink Proxy System
+========================================
+
+OVERVIEW:
+This is a local proxy system for Sonoff smart home devices that intercepts communication 
+between the devices and the eWeLink cloud server. It allows local control of Sonoff devices 
+while optionally maintaining cloud connectivity.
+Essentially sets up your Linux device as a Man-In-The-Middle (MITM) transparent proxy for your network.
+Gateway: 
+  It turns the device into a router using {ip_forward}.
+Redirection: 
+  It captures all outbound HTTP, HTTPS, and eWeLink traffic (ports 80, 443, 8081) and transparently redirects the packets to the Node.js proxy application.
+Internet Access: 
+  It uses MASQUERADE so the proxyed devices can still get out to the internet through the proxy server.
+
+ARCHITECTURE:
+The system consists of 4 main modules working together:
+
+┌─────────────┐
+│Sonoff Device│──┐
+└─────────────┘  │
+┌─────────────┐  │      ┌──────────────┐      ┌─────────────┐
+│Sonoff Device│──┼─────→│ Local Proxy  │←────→│Cloud Server │
+└─────────────┘  │      │  (This Code) │      │  (eWeLink)  │
+┌─────────────┐  │      └──────────────┘      └─────────────┘
+│Sonoff Device│──┘
+└─────────────┘
+
+==============================================================================
+This is a Node.js-based proxy system that intercepts communication between 
+Sonoff smart home devices and the eWeLink cloud server. It allows local 
+control of devices while optionally maintaining cloud connectivity, without 
+requiring firmware modifications on the devices.
+
+==============================================================================
+ARCHITECTURE
+==============================================================================
+
+[Sonoff Devices] <--WebSocket--> [Local Proxy Server] <--WebSocket--> [eWeLink Cloud]
+                                        |
+                                   [Local Control]
+
+==============================================================================
+KEY FEATURES
+==============================================================================
+
+✓ No sONOFF device firmware modification required
+✓ Maintains cloud connectivity (optional)
+✓ Enables local control without internet
+✓ Automatic device discovery and registration
+✓ Connection health monitoring (ping/pong + timeouts)
+✓ Bidirectional message proxying
+✓ State tracking for all devices
+✓ Extensible event-driven architecture
+
+==============================================================================
+════════════════════════════════════════════════════════════════════════════════
+run.sh
+--------
+
+This bash script is configuring your Linux machine to act as a transparent proxy or a network gateway using sysctl and iptables.
+The goal of these rules is to intercept network traffic (specifically for HTTP/HTTPS/eWeLink ports) destined for external servers, and redirect it to a local proxy application running on your device at 192.168.1.11 on port 8888.
+
+
+   - Bash script that configures the network and launches the proxy
+   - Enables IP forwarding on the Linux system
+   - Flushes existing NAT rules
+   - Sets up MASQUERADING for outbound traffic on eth0
+   - Redirects incoming traffic on ports 80, 443, and 8081 to local proxy 
+     server at 192.168.1.11:8888
+   - Starts the Node.js proxy server
+
+   Key iptables rules:
+   * All HTTP (80) and HTTPS (443) traffic is redirected to the proxy
+   * This intercepts device communication destined for eWeLink servers
+   * MASQUERADE allows the proxy to forward traffic while changing source IP
+
+
+MODULE 1: proxy.mjs
+-------------------
+PURPOSE: Main orchestrator that connects the local device server with the cloud handler
+
+KEY FUNCTIONALITY:
+- Sets up event listeners for device lifecycle events
+- Coordinates bidirectional message flow between devices and cloud
+- Uses event-driven architecture with 'proxyEvent' emitter
+
+EVENT HANDLERS:
+1. 'devConnEstablished' - When device connects to proxy, proxy connects to cloud
+2. 'pingReceived' - Keeps device connection alive, devices ping every 10 seconds
+3. 'proxy2deviceConnectionClosed' - Closes corresponding cloud connection
+4. 'messageFromCMD' - Forwards command-line commands to cloud
+5. 'messageFromDevice' - Forwards device messages to cloud
+6. 'messageFromCloud' - Forwards cloud messages to device
+
+════════════════════════════════════════════════════════════════════════════════
+
+MODULE 2: sONOFFserver.mjs
+--------------------------
+PURPOSE: Local HTTPS/WebSocket server that impersonates the eWeLink cloud server
+
+HOW IT WORKS:
+Sonoff devices go through 4 connection phases:
+
+PHASE 1 - DISPATCH:
+- Device sends HTTPS POST to eu-disp.coolkit.cc
+- Proxy intercepts and responds with local IP (192.168.1.11) and port (8888)
+
+PHASE 2 - WEBSOCKET:
+- Device establishes WebSocket connection to local server
+
+PHASE 3 - REGISTRATION:
+- Device sends registration messages
+- Server responds with acceptance using proxy API key
+
+PHASE 4 - COMMANDS:
+- Device is now online and ready to receive commands
+- Periodic status updates sent by device
+
+TECHNICAL SETUP:
+- HTTPS server with custom SSL/TLS certificates (matteo-key.pem, matteo-cert.pem)
+- Uses weak cipher suite for compatibility with Sonoff devices
+- WebSocket server layered on top of HTTPS server
+- Listens on 192.168.1.11:8888
+
+EXPORTED FUNCTIONS:
+1. forward2device() - Sends messages from cloud to specific device
+   - Replaces cloud API key with proxy API key
+   - Updates device state if it's an 'update' action
+
+2. checkinDeviceOnLine() - Manages device connectivity timeout
+   - Resets 30-second timeout on each ping
+   - Terminates connection if no ping received for 30 seconds
+
+PREREQUISITES:
+- Router must redirect traffic from Sonoff devices to local IP
+- Devices must be pre-configured for cloud connectivity
+- DNS or routing rules needed to intercept eu-disp.coolkit.cc
+
+════════════════════════════════════════════════════════════════════════════════
+
+MODULE 3: requestHandler.mjs
+----------------------------
+PURPOSE: Handles initial HTTP dispatch request and WebSocket connection setup
+
+FUNCTIONS:
+
+1. handleHttpRequest()
+   - Intercepts POST to /dispatch/device
+   - Extracts device ID from request body
+   - Stores dispatch info in 'dispatch' object
+   - Returns JSON with local server IP and port
+
+2. handleDispatchRequest()
+   - Parses device information from POST body
+   - Stores in dispatch[] array indexed by device ID
+   - Sends hardcoded response directing device to local server
+
+3. handleWebSocketConnection()
+   - Sets up WebSocket for each device connection
+   - Implements ping/pong heartbeat mechanism
+   - Tracks time between pings (should be <140 seconds)
+   
+   EVENT HANDLERS:
+   - 'ping' - Emits 'pingReceived' event, logs time difference
+   - 'message' - Passes to messageHandler for processing
+   - 'error' - Emits 'proxy2deviceConnectionClosed' and terminates
+   - 'close' - Cleans up device from sONOFF object, marks OFFLINE
+
+════════════════════════════════════════════════════════════════════════════════
+
+MODULE 4: messageHandler.mjs
+----------------------------
+PURPOSE: Parses and processes WebSocket messages from devices
+
+DATA STRUCTURE:
+handleMessage object contains:
+- actions{} - Map of action names to handler functions
+- connectionid{} - Map of IP addresses to WebSocket connections
+- Various methods for message processing
+
+CORE METHOD - msgInit():
+- Converts binary buffer to string
+- Parses JSON message
+- Extracts device ID and stores WebSocket connection
+- Handles 'register' action specially (first-time setup)
+- For online devices: emits 'messageFromDevice' and 'pingReceived' events
+- Updates device state for 'update' actions
+- Dispatches to appropriate action handler
+
+ACTION HANDLERS:
+
+1. 'register' - Device registration
+   - Sends acceptance with proxy API key
+   - Creates device entry in sONOFF object if new
+   - Assigns temporary alias for new devices (new-DEVICEID)
+   - Appends new device to sONOFF.cmd file for configuration
+   - Stores registration message
+
+2. 'date' - Date synchronization request
+   - Stores date request message
+   - Responds with current ISO timestamp
+   - Used for device clock synchronization
+
+3. 'update' - Device state change
+   - Stores update message
+   - Extracts switch state from params.switch
+   - Updates sONOFF[deviceid]['state']
+   - Sends acknowledgment response
+
+4. 'query' - Device query (connection finalization)
+   - Marks device as online (isOnLine = true)
+   - Emits 'devConnEstablished' event
+   - Triggers cloud connection setup
+
+════════════════════════════════════════════════════════════════════════════════
+
+DATA FLOW EXAMPLE:
+
+DEVICE STARTUP SEQUENCE:
+1. Device → HTTP POST /dispatch/device → Proxy
+2. Proxy → {IP: 192.168.1.11, port: 8888} → Device
+3. Device → WebSocket connect → Proxy
+4. Device → {"action":"register",...} → Proxy
+5. Proxy → {"error":0, "apikey":"PROXY_KEY"} → Device
+6. Device → {"action":"date"} → Proxy
+7. Proxy → {"date":"2024-01-09T..."} → Device
+8. Device → {"action":"query"} → Proxy
+9. Proxy emits 'devConnEstablished' → Cloud connection established
+10. Device now online, ready for commands
+
+COMMAND EXECUTION:
+1. Cloud → {"action":"update","params":{"switch":"on"}} → Proxy
+2. Proxy receives via 'messageFromCloud' event
+3. Proxy calls sONOFFserver.forward2device()
+4. Proxy → Message → Device via WebSocket
+5. Device executes command (turns on)
+6. Device → {"action":"update","params":{"switch":"on"}} → Proxy
+7. Proxy forwards to Cloud via cloudHandler.forward2cloud()
+
+════════════════════════════════════════════════════════════════════════════════
+
+KEY FEATURES:
+
+SECURITY CONSIDERATIONS:
+- Uses custom SSL/TLS certificates
+- TLS rejection disabled (NODE_TLS_REJECT_UNAUTHORIZED = 0) - INSECURE
+- Replaces device API keys with proxy API key
+- Ciphers set to SECLEVEL=0 for compatibility - WEAK ENCRYPTION
+
+RELIABILITY MECHANISMS:
+- 30-second timeout for device inactivity
+- Ping/pong heartbeat every 10 seconds
+- Automatic connection cleanup on device disconnect
+- Error handling for malformed JSON messages
+
+DEVICE MANAGEMENT:
+- Stores all device info in sONOFF global object structure:
+  sONOFF[deviceid] = {
+    conn: { ws: WebSocket, apikey: string },
+    state: string (on/off/Registering/Registered),
+    isOnLine: boolean,
+    alias: string,
+    registerSTR/dateSTR/updateSTR/querySTR: stored messages
+  }
+
+- New devices auto-added with temporary alias
+- Device list maintained in sONOFF.cmd file
+
+NETWORKING REQUIREMENTS:
+- Router/firewall must redirect eu-disp.coolkit.cc to 192.168.1.11
+- Port 8888 must be accessible to devices on local network
+- SSL certificates must be trusted by devices (or validation disabled)
+
+════════════════════════════════════════════════════════════════════════════════
+
+LIMITATIONS & NOTES:
+
+1. Hardcoded IP address (192.168.1.11) and port (8888)
+2. Certificate paths hardcoded (/root/WS/tls/)
+3. Security features intentionally weakened for device compatibility
+4. No authentication between command socket and proxy
+5. All devices share same proxy API key
+6. File system used for persistent device list (sONOFF.cmd)
+7. Requires network-level traffic interception (DNS/routing changes)
+
+This system essentially performs a man-in-the-middle operation on Sonoff devices,
+allowing local control while maintaining cloud connectivity for the eWeLink app.

@@ -14,10 +14,7 @@ all the device informations including connection are stored within the sONOFF ob
 
 // Importing the handleMessage function from the messageHandler module
 import { handleMessage } from './messageHandler.mjs';
-import { proxyEvent, sONOFF } from './sharedVARs.js'
-
-// A dictionary to store dispatch information using device IDs as keys
-const dispatch = {};
+import { PROXY_PORT, PROXY_IP, proxyEvent, sONOFF, dispatch } from './sharedVARs.js'
 
 // Function to handle HTTP requests
 export function handleHttpRequest(req, res) {
@@ -68,7 +65,14 @@ function handleDispatchRequest(req, res, secure) {
         });
 
     // A predefined response message
-    const response = '{"port":8888,"reason":"ok","IP":"192.168.200.1","error":0}';
+    // const response = '{"port":8888,"reason":"ok","IP":"192.168.1.11","error":0}';
+   const response = JSON.stringify({
+     port: PROXY_PORT,
+     reason: "ok",
+     IP: PROXY_IP,
+     error: 0
+   });
+
 
     // Function to send a reply to the client
     function sendReply(res) {

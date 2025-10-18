@@ -55,7 +55,7 @@ import { WebSocketServer } from 'ws';
 
 // imports from sub-modules
 import { handleHttpRequest, handleWebSocketConnection } from './requestHandler.mjs';
-import { sONOFF, reAPIkey, proxyAPIKey } from './sharedVARs.js';
+import { PROXY_IP, PROXY_PORT, TLS_KEY_PATH, TLS_CERT_PATH, sONOFF, reAPIkey, proxyAPIKey } from './sharedVARs.js';
 
 // Disabling TLS rejection for testing purposes
 process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
@@ -64,8 +64,8 @@ process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
 const options = {
   secureProtocol: "TLS_method",
   ciphers: "DEFAULT:@SECLEVEL=0",
-  key: readFileSync('/root/WS/tls/matteo-key.pem'),
-  cert: readFileSync('/root/WS/tls/matteo-cert.pem'),
+  key: readFileSync(TLS_KEY_PATH),
+  cert: readFileSync(TLS_CERT_PATH),
 };
 
 // Create HTTPS server
@@ -83,9 +83,10 @@ function heartbeat() {
 wss.on('connection', (ws, req) => handleWebSocketConnection(ws, req));
 
 // Start the server
-server.listen(8888, '192.168.200.1', () => {
-  console.log('HTTPS server listening on port 8888');
+server.listen(PROXY_PORT, PROXY_IP, () => {
+  console.log(`HTTPS server listening on ${PROXY_IP}:${PROXY_PORT}`);
 });
+
 
 import { cmdSocket } from './cmd.mjs';
 cmdSocket();

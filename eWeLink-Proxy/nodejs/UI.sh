@@ -1,3 +1,5 @@
+#!/bin/bash
+
 sonoff() {
         echo "$*" | nc -w 1 localhost 9999
 }

@@ -74,6 +74,9 @@ export const handleMessage = {
         let msgObj = JSON.parse(ws['msg']);
         if(msgObj['action'] == 'register') {
           ws['deviceid'] = msgObj['deviceid'];
+	  if (!sONOFF[ws['deviceid']]) {
+              sONOFF[ws['deviceid']] = {}; // Initialize the main device object
+          }
           sONOFF[ws['deviceid']]["conn"] = {};
           sONOFF[ws['deviceid']]["conn"]['apikey'] = msgObj['apikey'];
           sONOFF[ws['deviceid']]["conn"]['ws'] = ws;

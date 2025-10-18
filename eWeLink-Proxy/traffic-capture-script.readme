@@ -1,0 +1,32 @@
+Usage Instructions:
+Run the script:
+sudo ./sonoff_monitor.sh
+
+Output structure:
+
+sONOFFcapture/
+├── device_state.db          # Persistent state
+├── device_list.txt          # Current device list
+├── monitor.log              # Activity log
+├── aa-bb-cc-dd-ee-ff.pcap  # Traffic capture for device 1
+├── 11-22-33-44-55-66.pcap  # Traffic capture for device 2
+└── ...
+
+Features:
+✅ Monitors DNS requests for eu-disp.coolkit.cc continuously
+✅ Captures MAC addresses of requesting devices
+✅ Logs all traffic to/from each device in separate .pcap files
+✅ Calculates average time between periodic requests
+✅ Marks devices OFFLINE when last request exceeds N×average
+✅ Stops averaging for offline devices
+✅ Persistent state - survives script restarts
+✅ Live status display with color coding
+✅ Automatic ARP resolution for IP→MAC mapping
+
+Customization:
+Edit these variables in the script:
+
+OFFLINE_MULTIPLIER=3 - Change the offline detection threshold
+INTERFACE="eth0" - Change your network interface
+Keep last 10 timestamps - Change in add_request_time() function
+The script will continuously monitor and update device status every 30 seconds!

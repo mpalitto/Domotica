@@ -1,3 +1,46 @@
+# Packet captures
+*.pcap
+*.pcapng
+*.cap
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Monitoring data
+eWeLink-Proxy/sONOFFcapture/
+monitor.log
+device_list.txt
+device_state.db
+
+# Environment and secrets
+.env
+*.pem
+*.key
+*.crt
+*.p12
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Node modules
+node_modules/
+npm-debug.log
+
 # Windows image file caches
 Thumbs.db
 ehthumbs.db
