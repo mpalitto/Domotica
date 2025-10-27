@@ -1,0 +1,98 @@
+<<<<<<< HEAD
+# Packet captures
+*.pcap
+*.pcapng
+*.cap
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Monitoring data
+eWeLink-Proxy/sONOFFcapture/
+monitor.log
+device_list.txt
+device_state.db
+
+# Environment and secrets
+.env
+*.pem
+*.key
+*.crt
+*.p12
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Node modules
+node_modules/
+npm-debug.log
+=======
+# Ignore specific log files
+LinuxServerScripts/.*.log*
+
+# Ignore temporary file
+LinuxServerScripts/tmp
+>>>>>>> 27d13c72b433e367c93d508a851ce895105dc7ff
+
+# Windows image file caches
+Thumbs.db
+ehthumbs.db
+
+# Folder config file
+Desktop.ini
+
+# Recycle Bin used on file shares
+$RECYCLE.BIN/
+
+# Windows Installer files
+*.cab
+*.msi
+*.msm
+*.msp
+
+# Windows shortcuts
+*.lnk
+
+# =========================
+# Operating System Files
+# =========================
+
+# OSX
+# =========================
+
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Thumbnails
+._*
+
+# Files that might appear in the root of a volume
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+
+# Directories potentially created on remote AFP share
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk

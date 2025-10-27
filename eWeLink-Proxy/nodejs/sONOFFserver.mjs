@@ -123,7 +123,7 @@ export const sONOFFserver = {
       ws.terminate(); // Close the WebSocket connection
     }, 30000); // 30 seconds in milliseconds
 
-    console.log('\n\nwsTimeout started for device: ' + ws['deviceid'])
+    //console.log('\n\nwsTimeout started for device: ' + ws['deviceid'])
 
   }
 };

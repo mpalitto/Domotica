@@ -3,11 +3,12 @@ name 1000015719 master-corridor
 name 1000015746 nick-bedroom                 
 name 1000015766 nick-bath                    
 name 1000015772 piano-light                  
-name 100001572e non-si-sa-1                  
 name 10000157b7 kitchen-light                
 name 10000157df dining                       
 name 10000157d8 master-bath                  
 name 1000024d37 water-valves                 
 name 10000157ed entry-light                  
+name 100001572e non-si-sa-1                  
+name 1000024cf2 non-si-sa-2                  
 name 1000024cec desk0
 name 1000024e09 desk1

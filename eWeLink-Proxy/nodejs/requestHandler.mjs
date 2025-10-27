@@ -104,9 +104,9 @@ export function handleWebSocketConnection(ws, req) {
     ws.on('ping', () => { // we've received a PING request
         const currentTime = Date.now();
         const timeDifference = (currentTime - prevPingTime) / 1000; // Convert milliseconds to seconds
-        console.log(`PING received from ${connectionId}: Time between pings: ${timeDifference} secs`);
+        //console.log(`PING received from ${connectionId}: Time between pings: ${timeDifference} secs`);
         prevPingTime = currentTime;
-        console.log('\nemitting event pingReceived from device: ' + ws['deviceid']);
+        //console.log('\nemitting event pingReceived from device: ' + ws['deviceid']);
         proxyEvent.emit('pingReceived',ws['deviceid'])
     });
 

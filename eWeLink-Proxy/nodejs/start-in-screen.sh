@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# if the script was started from a different folder, go to the folder where the script is found
+SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd $SCRIPT_PATH
+
 SESSION_NAME="sONOFF-Server"
 
 # Check if a screen session with the same name already exists

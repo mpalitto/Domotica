@@ -1,6 +1,6 @@
 #!/bin/bash
 # Start a new screen session with a title
-screen -t "SERVER" ./start-config-proxy.sh
+screen -t "SERVER" ./configNDstart-proxy.sh
 
 # Split the screen horizontally and create a new window
 split

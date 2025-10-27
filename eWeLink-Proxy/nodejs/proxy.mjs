@@ -31,7 +31,7 @@ proxyEvent.on('devConnEstablished', (deviceID) => {
 // after 30 seconds from last PING received the connection to the device is considered lost
 // and the connection will officialy be closed
 proxyEvent.on('pingReceived', (deviceID) => {
-    console.log('\n\nping received by: ' + deviceID);
+    //console.log('\n\nping received by: ' + deviceID);
     sONOFFserver.checkinDeviceOnLine(deviceID)
 });
 

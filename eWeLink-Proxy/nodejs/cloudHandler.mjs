@@ -102,7 +102,7 @@ cloudHandler.connect = (deviceid) => {
       sONOFF[deviceid]['cloud'] = 'register';   // we have sent the register request and are waiting for cloud server reply
 
       pingInterval = setInterval(() => {
-        console.log('Sending ping to CLOUD server');
+        //console.log('Sending ping to CLOUD server');
         ws.send('ping'); // Send ping
       }, 100000); // Change the interval as needed (100 seconds here)
 
@@ -112,9 +112,9 @@ cloudHandler.connect = (deviceid) => {
     // when a message from cloud server is received
     ws.on('message', function incoming(message) { 
       message = message.toString();
-      console.log('\n\nReceived message from CLOUD server: ' + message);
+      //console.log('\n\nReceived message from CLOUD server: ' + message);
       if (message.toString() === 'pong') {
-        console.log('Received pong from CLOUD server');
+        //console.log('Received pong from CLOUD server');
         // Handle pong response here if needed
       } else {
   
