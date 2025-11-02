@@ -43,9 +43,13 @@ npm-debug.log
 
 # Ignore specific log files
 LinuxServerScripts/.*.log*
+eWeLink-Proxy/nodejs/logs/
+eWeLink-Proxy/nodejs/.*.log*
 
 # Ignore temporary file
 LinuxServerScripts/tmp
+eWeLink-Proxy/nodejs/tmp/
+eWeLink-Proxy/nodejs/backups/
 
 # Windows image file caches
 Thumbs.db

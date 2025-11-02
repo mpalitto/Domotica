@@ -1,0 +1,200 @@
+/*
+Author: Matteo Palitto
+Date: January 9, 2024
+
+Description: cloudConnectionManager.mjs
+High-level cloud connection management
+*/
+
+import WebSocket from 'ws';
+import { sONOFF, proxyAPIKey, proxyEvent } from '../sharedVARs.js';
+import { CloudLogger } from './cloudLogger.mjs';
+import { CloudDispatch } from './cloudDispatch.mjs';
+import { CloudWebSocket } from './cloudWebSocket.mjs';
+import { CloudHeartbeat } from './cloudHeartbeat.mjs';
+import { CloudRegistration } from './cloudRegistration.mjs';
+
+export class CloudConnectionManager {
+    /**
+     * Initiate cloud connection for device
+     */
+    static connect(deviceID) {
+        CloudLogger.log('🌐 CLOUD CONNECTION INITIATED', {
+            deviceID: deviceID,
+            timestamp: new Date().toISOString()
+        });
+        
+        console.log(`\n${'='.repeat(80)}`);
+        console.log(`🌐 INITIATING CLOUD CONNECTION FOR DEVICE: ${deviceID}`);
+        console.log(`${'='.repeat(80)}\n`);
+        
+        // Validate device exists
+        if (!this.#validateDevice(deviceID)) {
+            return;
+        }
+        
+        // Check for existing connection
+        if (this.#hasActiveConnection(deviceID)) {
+            return;
+        }
+        
+        CloudLogger.log('✅ Device has valid connection info, proceeding to dispatch', {
+            deviceID,
+            apiKey: sONOFF[deviceID].conn.apikey,
+            alias: sONOFF[deviceID].alias
+        });
+        
+        // Get cloud server via dispatch
+        CloudDispatch.getCloudServer(
+            deviceID,
+            (cloudUrl) => {
+                CloudWebSocket.connect(deviceID, cloudUrl);
+            },
+            (error) => {
+                console.log(`❌ Failed to get cloud server for ${deviceID}: ${error}`);
+            }
+        );
+    }
+
+    /**
+     * Validate device has necessary information
+     */
+    static #validateDevice(deviceID) {
+        if (!sONOFF[deviceID]) {
+            CloudLogger.log('❌ Device not found in sONOFF', { deviceID });
+            console.log('❌ Cannot connect to cloud: device', deviceID, 'not found in sONOFF');
+            proxyEvent.emit('cloudConnectionFailed', deviceID, 'Device not found');
+            return false;
+        }
+        
+        if (!sONOFF[deviceID].conn) {
+            CloudLogger.log('❌ Device has no connection info', {
+                deviceID,
+                deviceData: sONOFF[deviceID]
+            });
+            console.log('❌ Cannot connect to cloud: device', deviceID, 'has no connection info');
+            proxyEvent.emit('cloudConnectionFailed', deviceID, 'No connection info');
+            return false;
+        }
+        
+        return true;
+    }
+
+    /**
+     * Check if device has active connection
+     */
+    static #hasActiveConnection(deviceID) {
+        const existingWS = CloudWebSocket.getConnection(deviceID);
+        
+        if (existingWS) {
+            if (existingWS.readyState === WebSocket.OPEN) {
+                CloudLogger.log('⚠️ Cloud connection already exists and is OPEN', { deviceID });
+                console.log('⚠️ Cloud connection already exists for device:', deviceID);
+                return true;
+            } else {
+                // Clean up stale connection
+                CloudLogger.log('🧹 Cleaning up stale connection', {
+                    deviceID,
+                    state: existingWS.readyState
+                });
+                console.log('🧹 Cleaning up stale cloud connection for device:', deviceID);
+                this.closeConnection(deviceID);
+            }
+        }
+        
+        return false;
+    }
+
+    /**
+     * Forward message to cloud
+     */
+    static forward2cloud(deviceID, message) {
+        if (!deviceID) {
+            CloudLogger.log('⚠️ forward2cloud called without deviceID');
+            console.log('⚠️ forward2cloud called without deviceID');
+            return;
+        }
+        
+        const cloudWS = CloudWebSocket.getConnection(deviceID);
+        
+        if (cloudWS && cloudWS.readyState === WebSocket.OPEN) {
+            CloudLogger.log('⬆️ FORWARDING TO CLOUD', {
+                deviceID,
+                originalMessage: message
+            });
+            
+            // Replace proxy apikey with device's CLOUD apikey
+            let cloudMessage = message;
+            if (sONOFF[deviceID] && sONOFF[deviceID].conn) {
+                const apikeyToUse = sONOFF[deviceID].conn.cloudApiKey || sONOFF[deviceID].conn.apikey;
+                
+                cloudMessage = message.replace(
+                    new RegExp(proxyAPIKey, 'g'),  
+                    apikeyToUse
+                );
+                
+                CloudLogger.log('🔑 API key replaced', {
+                    usingCloudApiKey: !!sONOFF[deviceID].conn.cloudApiKey,
+                    cloudMessage: cloudMessage
+                });
+                
+                console.log(`🔑 Using ${sONOFF[deviceID].conn.cloudApiKey ? 'cloud-provided' : 'device'} apikey for cloud communication`);
+            }
+            
+            cloudWS.send(cloudMessage);
+            
+            console.log(`⬆️  Forwarded to cloud for device ${deviceID}`);
+        } else {
+            CloudLogger.log('⚠️ CANNOT FORWARD TO CLOUD: connection not present or not open', {
+                deviceID,
+                connectionExists: !!cloudWS,
+                wsState: cloudWS ? ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'][cloudWS.readyState] : 'no websocket'
+            });
+            
+            console.log(`⚠️  Cannot forward to cloud for device ${deviceID} - not connected`);
+            
+            if (cloudWS) {
+                console.log(`   Connection state: ${['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'][cloudWS.readyState]}`);
+            }
+        }
+    }
+
+    /**
+     * Close cloud connection
+     */
+    static closeConnection(deviceID) {
+        if (!deviceID) {
+            CloudLogger.log('⚠️ closeConnection called without deviceID');
+            console.log('⚠️ closeConnection called with undefined/null deviceID - ignoring');
+            return;
+        }
+        
+        CloudLogger.log('🔒 CLOSING CLOUD CONNECTION', { deviceID });
+        
+        console.log(`🔒 Closing cloud connection for device: ${deviceID}`);
+        
+        // Clear registration timeout
+        CloudRegistration.clearTimeout(deviceID);
+        
+        // Clear heartbeat
+        CloudHeartbeat.stop(deviceID);
+        
+        // Close WebSocket
+        const closed = CloudWebSocket.closeConnection(deviceID);
+        
+        if (closed) {
+            console.log(`   ✅ Terminated`);
+        }
+        
+        // Clean up sONOFF reference
+        if (sONOFF[deviceID]) {
+            if (sONOFF[deviceID]['cloudWS']) {
+                delete sONOFF[deviceID]['cloudWS'];
+            }
+            sONOFF[deviceID].cloudConnected = false;
+        }
+        
+        // Emit event
+        proxyEvent.emit('cloudConnectionClosed', deviceID);
+    }
+}
