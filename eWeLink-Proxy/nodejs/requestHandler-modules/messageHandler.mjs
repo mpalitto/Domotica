@@ -8,6 +8,8 @@ Supports transparent capture mode for protocol analysis
 
 Key features:
 - Uses device's own apikey (not proxyAPIKey) for responses
+- Stores device's original apikey in cmd file
+- Uses cloud apikey for responses after cloud registration
 - Supports transparent capture mode with IP-based matching
 - Clears timeouts after successful registration
 - Properly handles cloud connection events
@@ -152,13 +154,6 @@ const messageHandlerInternal = {
                     console.log(`   ✅ Cleared first-message timeout (device registered successfully)`);
                 }
                 
-                // **CRITICAL: Clear stale connection timeout - device has re-registered!**
-                if (ws.staleConnectionTimeout) {
-                    clearTimeout(ws.staleConnectionTimeout);
-                    ws.staleConnectionTimeout = null;
-                    console.log(`   ✅ Cleared stale-connection timeout (fresh registration received)`);
-                }
-                
                 // Initialize stats and diagnostics
                 initDeviceStats(ws['deviceid']);
                 initDeviceDiagnostics(ws['deviceid']);
@@ -260,57 +255,94 @@ handleMessage.on('register', (ws) => {
         console.error('❌ Register handler called without deviceid!');
         return;
     }
-    
+
     // Ensure stats exist and increment
     initDeviceStats(ws['deviceid']);
     deviceStats[ws['deviceid']].REGISTER_REQ++;
-    
-    // **CRITICAL FIX: Extract device's ORIGINAL apikey from the register message**
+
+    // Extract apikey from the register message
     let msgObj = JSON.parse(ws['msg']);
-    const deviceApiKey = msgObj['apikey'];
-    
-    // **Build response using the SAME apikey the device sent**
-    // (Don't use proxyAPIKey - use device's own key!)
-    const response = JSON.stringify({
-        error: 0,
-        deviceid: ws['deviceid'],
-        apikey: deviceApiKey,  // ← Use device's apikey, not proxyAPIKey!
-        config: { hb: 1, hbInterval: 145 }  // ← Match cloud's hbInterval (145s, not 3s)
-    });
-    
-    // Debug logging
-    debugLog(ws['deviceid'], 'PROXY → DEVICE', 'REGISTER RESPONSE', response);
-    
-    console.log(`   ✅ Using device's apikey: ${deviceApiKey.substring(0, 8)}...`);
-    
-    // Send response
-    ws.send(response);
-    deviceStats[ws['deviceid']].REGISTER_ACK++;
-    
-    // Get device from file or use new alias
+    const receivedApiKey = msgObj['apikey'];
+
+    // Determine if this is first-time registration or reconnection
     const deviceFromFile = getDeviceFromCmdFile(ws['deviceid']);
-    
+    const isFirstTime = !deviceFromFile || !deviceFromFile.apikey;
+
+    if (isFirstTime) {
+        // FIRST TIME: Device sends its original apikey
+        console.log(`   📝 First-time registration - storing device apikey: ${receivedApiKey.substring(0, 8)}...`);
+        console.log(`   🔄 Instructing device to switch to proxyAPIKey: ${proxyAPIKey.substring(0, 8)}...`);
+
+        // Store device's ORIGINAL apikey in cmd file (for cloud connection)
+        const mac = ws['MAC'] || null;
+        const ip = ws['IP'] ? ws['IP'].replace('::ffff:', '') : null;
+
+        if (!sONOFF[ws['deviceid']].alias || sONOFF[ws['deviceid']].alias.startsWith('new-')) {
+            sONOFF[ws['deviceid']]["alias"] = 'new-' + ws['deviceid'];
+        }
+
+        updateDeviceInCmdFile(ws['deviceid'], sONOFF[ws['deviceid']]["alias"], mac, ip, receivedApiKey);
+
+        // Tell device to use proxyAPIKey from now on
+        const response = JSON.stringify({
+            error: 0,
+            deviceid: ws['deviceid'],
+            apikey: proxyAPIKey,  // ← Tell device to use proxyAPIKey
+            config: { hb: 1, hbInterval: 145 }
+        });
+
+        ws.send(response);
+
+    } else {
+        // RECONNECTION: Device should already be using proxyAPIKey
+        if (receivedApiKey === proxyAPIKey) {
+            console.log(`   ✅ Device using proxyAPIKey (reconnection)`);
+        } else if (receivedApiKey === deviceFromFile.apikey) {
+            console.log(`   🔄 Device sent original apikey - instructing to use proxyAPIKey`);
+        } else {
+            console.log(`   ⚠️  Unknown apikey received: ${receivedApiKey.substring(0, 8)}...`);
+        }
+
+        // Always respond with proxyAPIKey
+        const response = JSON.stringify({
+            error: 0,
+            deviceid: ws['deviceid'],
+            apikey: proxyAPIKey,  // ← Always use proxyAPIKey for local control
+            config: { hb: 1, hbInterval: 145 }
+        });
+
+        ws.send(response);
+    }
+
+    deviceStats[ws['deviceid']].REGISTER_ACK++;
+
+    // Update alias if needed
     if (!sONOFF[ws['deviceid']].alias || sONOFF[ws['deviceid']].alias.startsWith('new-')) {
         if (deviceFromFile && !deviceFromFile.alias.startsWith('new-')) {
             sONOFF[ws['deviceid']]["alias"] = deviceFromFile.alias;
         } else {
-            sONOFF[ws['deviceid']]["alias"] = 'new-' + ws['deviceid'];
             console.log(`   🆕 New device needs a name - use: name ${ws['deviceid']} <name>`);
         }
     }
-    
-    // Get MAC and IP from WebSocket
-    const mac = ws['MAC'] || null;
-    const ip = ws['IP'] ? ws['IP'].replace('::ffff:', '') : null;
-    
-    // Update cmd file with current MAC and IP
-    updateDeviceInCmdFile(ws['deviceid'], sONOFF[ws['deviceid']]["alias"], mac, ip);
-    
+
+    // Store connection info
+    if (!sONOFF[ws['deviceid']]["conn"]) {
+        sONOFF[ws['deviceid']]["conn"] = {};
+    }
+    // Store device's original apikey (for cloud connection)
+    sONOFF[ws['deviceid']]["conn"]['deviceApiKey'] = deviceFromFile?.apikey || receivedApiKey;
+    // Store proxyAPIKey (for local communication)
+    sONOFF[ws['deviceid']]["conn"]['apikey'] = proxyAPIKey;
+    sONOFF[ws['deviceid']]["conn"]['ws'] = ws;
+
     // Store registration string
     sONOFF[ws['deviceid']]['registerSTR'] = ws['msg'];
-    sONOFF[ws['deviceid']]["state"] = 'off'; // Default to off until we get actual state
-    
-    // Initiate cloud connection
+    sONOFF[ws['deviceid']]["state"] = 'off';
+
+    // Debug logging
+    debugLog(ws['deviceid'], 'DEVICE → PROXY', 'REGISTER REQUEST', ws['msg']);
+
+    // Initiate cloud connection (optional, only if internet available)
     console.log(`🌐 Connecting ${ws['deviceid']} "${sONOFF[ws['deviceid']].alias}" to cloud...`);
     proxyEvent.emit('devConnEstablished', ws['deviceid']);
 });
@@ -338,17 +370,16 @@ handleMessage.on('date', (ws) => {
     initDeviceStats(ws['deviceid']);
     deviceStats[ws['deviceid']].DATE_REQ++;
     
-    // **CRITICAL FIX: Get device's apikey from stored connection**
-    // Use cloudApiKey if available (cloud may have changed it), otherwise use original
-    const deviceApiKey = sONOFF[ws['deviceid']].conn?.cloudApiKey || 
-                         sONOFF[ws['deviceid']].conn?.apikey || 
-                         proxyAPIKey;  // Fallback only
+    // **Use cloud apikey if available, otherwise device's original apikey**
+    const responseApiKey = sONOFF[ws['deviceid']].conn?.cloudApiKey || 
+                           sONOFF[ws['deviceid']].conn?.apikey || 
+                           proxyAPIKey;  // Last resort fallback
     
-    // Build response using device's apikey
+    // Build response
     const response = JSON.stringify({
         error: 0,
         deviceid: ws['deviceid'],
-        apikey: deviceApiKey,  // ← Use device's apikey
+        apikey: responseApiKey,
         date: new Date().toISOString()
     });
     
@@ -390,17 +421,16 @@ handleMessage.on('update', (ws) => {
         sONOFF[ws['deviceid']]['state'] = msgObj['params']['switch'];
     }
     
-    // **CRITICAL FIX: Get device's apikey from stored connection**
-    // Use cloudApiKey if available (cloud may have changed it), otherwise use original
-    const deviceApiKey = sONOFF[ws['deviceid']].conn?.cloudApiKey || 
-                         sONOFF[ws['deviceid']].conn?.apikey || 
-                         proxyAPIKey;  // Fallback only
+    // **Use cloud apikey if available, otherwise device's original apikey**
+    const responseApiKey = sONOFF[ws['deviceid']].conn?.cloudApiKey || 
+                           sONOFF[ws['deviceid']].conn?.apikey || 
+                           proxyAPIKey;  // Last resort fallback
     
-    // Build response using device's apikey
+    // Build response
     const response = JSON.stringify({
         error: 0,
         deviceid: ws['deviceid'],
-        apikey: deviceApiKey  // ← Use device's apikey
+        apikey: responseApiKey
     });
     
     // Debug logging

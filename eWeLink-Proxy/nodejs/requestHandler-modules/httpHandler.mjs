@@ -20,6 +20,9 @@ export class HttpHandler {
     static handleHttpRequest(req, res) {
         const clientIP = req.connection.remoteAddress;
         
+	// **ALWAYS log HTTP requests to see what's happening**
+        console.log(`📥 HTTP ${req.method} ${req.url} from ${clientIP}`);
+
         if (LOGGING_CONFIG.VERBOSE) {
             console.log('HTTPS request received:', req.method, req.url, 'from:', clientIP);
         }
@@ -91,25 +94,28 @@ export class HttpHandler {
                     deviceDiagnostics[deviceID].lastDispatchMAC = macAddress;
                 }
                 
-                // Check if device is unknown and add to cmd file
-                const deviceFromFile = getDeviceFromCmdFile(deviceID);
-                const alias = deviceFromFile?.alias || `new-${deviceID}`;
-                
-                if (!deviceFromFile) {
-                    console.log(`🆕 NEW device: ${deviceID} (${clientIP}, MAC: ${macAddress || 'unknown'})`);
-                    updateDeviceInCmdFile(deviceID, `new-${deviceID}`, macAddress, clientIP);
-                    
-                    if (!sONOFF[deviceID]) {
-                        sONOFF[deviceID] = {
-                            alias: `new-${deviceID}`,
-                            state: 'OFFLINE',
-                            isOnline: false
-                        };
-                    }
-                } else {
-                    console.log(`📡 Dispatch from ${deviceID} "${alias}" (${clientIP})`);
-                    updateDeviceInCmdFile(deviceID, deviceFromFile.alias, macAddress, clientIP);
-                }
+// Check if device is unknown and add to cmd file
+const deviceFromFile = getDeviceFromCmdFile(deviceID);
+const alias = deviceFromFile?.alias || `new-${deviceID}`;
+
+// **Extract apikey from dispatch message**
+const deviceApiKey = device.apikey || null;
+
+if (!deviceFromFile) {
+    console.log(`🆕 NEW device: ${deviceID} (${clientIP}, MAC: ${macAddress || 'unknown'})`);
+    updateDeviceInCmdFile(deviceID, `new-${deviceID}`, macAddress, clientIP, deviceApiKey);
+    
+    if (!sONOFF[deviceID]) {
+        sONOFF[deviceID] = {
+            alias: `new-${deviceID}`,
+            state: 'OFFLINE',
+            isOnline: false
+        };
+    }
+} else {
+    console.log(`📡 Dispatch from ${deviceID} "${alias}" (${clientIP})`);
+    updateDeviceInCmdFile(deviceID, deviceFromFile.alias, macAddress, clientIP, deviceApiKey);
+}
                 
                 // Log connection attempt
                 DeviceTracking.logConnectionAttempt(deviceID, clientIP, 'DISPATCH', true);

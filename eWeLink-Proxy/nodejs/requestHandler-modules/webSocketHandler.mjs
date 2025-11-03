@@ -4,7 +4,7 @@ Date: January 9, 2024 (Updated)
 
 Description: webSocketHandler.mjs
 Handles WebSocket connections and communication
-Includes fix for stale/half-open connections from previous proxy sessions
+Includes smart dispatch checking using cmd file data
 */
 
 import { sONOFF, proxyEvent, protocolCapture, deviceDiagnostics, deviceStats, transparentMode, LOGS_DIR } from '../sharedVARs.js';
@@ -37,96 +37,120 @@ export class WebSocketHandler {
             ws['MAC'] = macAddress;
         }
 
-// Try to identify device early
-const identification = DeviceIdentification.findDeviceByNetworkInfo(deviceIP, macAddress);
+        // Try to identify device early
+        const identification = DeviceIdentification.findDeviceByNetworkInfo(deviceIP, macAddress);
 
-// **NEW: If device identified but no dispatch data, load from cmd file**
-if (identification) {
-    const deviceID = identification.deviceID;
-    
-    // Import needed functions
-    const { getDeviceFromCmdFile } = await import('../cmd-modules/cmdFileManager.mjs');
-    const { dispatch } = await import('../sharedVARs.js');
-    
-    // Check if we're missing dispatch data
-    if (!dispatch[deviceID]) {
-        console.log(`📋 ${deviceID} "${identification.alias}" connected without dispatch - loading from cmd file`);
-        
-        // Load device info from file
-        const deviceFromFile = getDeviceFromCmdFile(deviceID);
-        
-        if (deviceFromFile) {
-            // Initialize sONOFF object if not exists
-            if (!sONOFF[deviceID]) {
-                sONOFF[deviceID] = {
-                    alias: deviceFromFile.alias,
-                    state: 'OFFLINE',
-                    isOnline: false,
-                    cloudConnected: false
-                };
-                console.log(`   ✅ Initialized device object from file: ${deviceID} "${deviceFromFile.alias}"`);
-            }
+        // **SMART VALIDATION - Accept known devices, require dispatch for unknown**
+        if (identification) {
+            const deviceID = identification.deviceID;
             
-            // Synthesize dispatch data from file
-            // This creates the dispatch record that would normally come from HTTP request
-            const syntheticDispatch = JSON.stringify({
-                deviceid: deviceID,
-                apikey: deviceFromFile.apikey || 'unknown', // We might need to get this from first message
-                model: deviceFromFile.model || 'ITA-GZ1-GL',
-                romVersion: deviceFromFile.romVersion || '3.5.0',
-                ip: deviceIP,
-                mac: macAddress,
-                source: 'synthesized-from-cmd-file'
-            });
+            // Import needed functions
+            const { dispatch } = await import('../sharedVARs.js');
+            const { checkDeviceCompleteness, getDeviceFromCmdFile } = await import('../cmd-modules/cmdFileManager.mjs');
             
-            dispatch[deviceID] = syntheticDispatch;
+            // Check if we have recent dispatch data
+            const hasDispatch = dispatch[deviceID];
+            const dispatchAge = deviceDiagnostics[deviceID]?.lastDispatchTime 
+                ? (new Date() - new Date(deviceDiagnostics[deviceID].lastDispatchTime)) / 1000 
+                : Infinity;
             
-            console.log(`   ✅ Synthesized dispatch data from cmd file`);
-            console.log(`   📝 Device can now proceed with registration`);
+            const DISPATCH_MAX_AGE = 300; // 5 minutes
+            const hasRecentDispatch = hasDispatch && dispatchAge <= DISPATCH_MAX_AGE;
             
-            // Initialize stats and diagnostics
-            DeviceTracking.initStats(deviceID);
-            DeviceTracking.initDiagnostics(deviceID);
-            
-            // Update diagnostics with synthesized dispatch
-            deviceDiagnostics[deviceID].lastDispatchTime = new Date().toISOString();
-            deviceDiagnostics[deviceID].lastDispatchIP = deviceIP;
-            deviceDiagnostics[deviceID].lastDispatchMAC = macAddress || null;
-            
-            // **For protocol capture: log the synthesized dispatch**
-            if (protocolCapture.enabled && deviceIP === protocolCapture.ip) {
-                console.log(`*** CAPTURE MODE: Creating log file for ${deviceID} (loaded from cmd file) ***`);
-                protocolCapture.deviceId = deviceID;
-                protocolCapture.logFile = `${LOGS_DIR}/${deviceID}.log`;
+            if (hasRecentDispatch) {
+                // Has recent dispatch - best case
+                console.log(`✅ ${deviceID} "${identification.alias}" has fresh dispatch (${dispatchAge.toFixed(0)}s ago)`);
                 
-                LoggingService.captureLog('DEVICE -> PROXY (SYNTHESIZED DISPATCH)', 
-                    `NOTE: Device skipped HTTP dispatch, data loaded from sONOFF.cmd file\n\n${syntheticDispatch}`);
+            } else {
+                // No recent dispatch - check if we KNOW this device
+                const completeness = checkDeviceCompleteness(deviceID);
+                
+                if (completeness.complete) {
+                    // Known device with complete data - ACCEPT (proxy restart scenario)
+                    const deviceFromFile = completeness.device;
+                    console.log(`✅ ${deviceID} "${identification.alias}" reconnecting (known device)`);
+                    console.log(`   📋 Using stored apikey: ${deviceFromFile.apikey.substring(0, 8)}...`);
+                    
+                    // Initialize sONOFF object
+                    if (!sONOFF[deviceID]) {
+                        sONOFF[deviceID] = {
+                            alias: deviceFromFile.alias,
+                            state: 'OFFLINE',
+                            isOnline: false,
+                            cloudConnected: false
+                        };
+                    }
+                    
+                    // Store expected apikey for validation during register
+                    sONOFF[deviceID].expectedApiKey = deviceFromFile.apikey;
+                    
+                    // Create dispatch record from cmd file data
+                    const syntheticDispatch = JSON.stringify({
+                        deviceid: deviceID,
+                        apikey: deviceFromFile.apikey,
+                        model: 'ITA-GZ1-GL',
+                        romVersion: '3.5.0',
+                        ip: deviceIP,
+                        mac: macAddress,
+                        source: 'cmd-file-reconnect'
+                    });
+                    
+                    dispatch[deviceID] = syntheticDispatch;
+                    
+                    // Initialize diagnostics
+                    DeviceTracking.initStats(deviceID);
+                    DeviceTracking.initDiagnostics(deviceID);
+                    deviceDiagnostics[deviceID].lastDispatchTime = new Date().toISOString();
+                    deviceDiagnostics[deviceID].lastDispatchIP = deviceIP;
+                    deviceDiagnostics[deviceID].lastDispatchMAC = macAddress || null;
+                    
+                    console.log(`   ✅ Ready to accept registration`);
+                    
+                } else {
+                    // Truly unknown device or missing critical data - REJECT
+                    console.log(`❌ ${deviceID} "${identification.alias}" is unknown or incomplete`);
+                    console.log(`   Missing: ${completeness.missing.join(', ')}`);
+                    console.log(`   💡 Expected HTTP dispatch first, but not received`);
+                    console.log(`   🔄 Try: power cycle device or check DNS/network configuration`);
+                    
+                    DeviceTracking.initDiagnostics(deviceID);
+                    DeviceTracking.logConnectionAttempt(
+                        deviceID, 
+                        deviceIP, 
+                        'WEBSOCKET', 
+                        false, 
+                        `Rejected: Unknown or incomplete (missing: ${completeness.missing.join(', ')})`
+                    );
+                    
+                    // Log this so we can see if devices retry
+                    console.log(`   ℹ️  Device will need to perform HTTP POST to /dispatch/device`);
+                    
+                    ws.close(1008, 'Unknown device - must dispatch first');
+                    return; // Exit early
+                }
             }
-            
-        } else {
-            console.log(`   ⚠️  Device ${deviceID} not found in cmd file`);
-            console.log(`   This appears to be a completely new device`);
-            console.log(`   Forcing re-dispatch to get full device info...`);
-            ws.close(1008, 'New device - please dispatch first');
-            return;
         }
-    } else {
-        // Has recent dispatch data - check age
-        const dispatchAge = deviceDiagnostics[deviceID]?.lastDispatchTime 
-            ? (new Date() - new Date(deviceDiagnostics[deviceID].lastDispatchTime)) / 1000 
-            : 0;
-        
-        if (dispatchAge < 300) { // Less than 5 minutes old
-            console.log(`✅ ${deviceID} "${identification.alias}" has valid dispatch data (${dispatchAge.toFixed(0)}s old)`);
-        }
-    }
-}
-        
+
+        // Log connection
         if (LOGGING_CONFIG.VERBOSE) {
             console.log('\n' + '─'.repeat(80));
             console.log(`🔌 WebSocket connection from ${deviceIP} (MAC: ${macAddress || 'unknown'})`);
             if (identification) {
-                console.log(`   Likely: ${identification.deviceID} "${identification.alias}"`);
+                console.log(`   Device: ${identification.deviceID} "${identification.alias}"`);
+            }
+            console.log('─'.repeat(80));
+        } else if (identification) {
+            console.log(`🔌 ${identification.deviceID} "${identification.alias}" connecting... (${deviceIP})`);
+        } else {
+            console.log(`🔌 Unknown device connecting from ${deviceIP} (MAC: ${macAddress || 'unknown'})`);
+        }
+
+        // Log connection
+        if (LOGGING_CONFIG.VERBOSE) {
+            console.log('\n' + '─'.repeat(80));
+            console.log(`🔌 WebSocket connection from ${deviceIP} (MAC: ${macAddress || 'unknown'})`);
+            if (identification) {
+                console.log(`   Device: ${identification.deviceID} "${identification.alias}"`);
             }
             console.log('─'.repeat(80));
         } else if (identification) {
@@ -161,11 +185,6 @@ if (identification) {
             }
         }
 
-        // **NEW: Detect stale connections - device is identified but doesn't re-register**
-        if (identification) {
-            this.#setupStaleConnectionDetector(ws, identification.deviceID, identification.alias);
-        }
-
         // Setup event handlers
         this.#setupPingHandler(ws, deviceIP, macAddress);
         this.#setupMessageHandler(ws, deviceIP, macAddress);
@@ -175,23 +194,6 @@ if (identification) {
         // Setup timeouts
         this.#setupFirstMessageTimeout(ws, deviceIP, macAddress);
         this.#setupIdentificationTimeout(ws, deviceIP, macAddress);
-    }
-
-    /**
-     * NEW: Setup stale connection detector
-     * Detects devices that connect but don't re-register (zombie sessions from old proxy)
-     */
-    static #setupStaleConnectionDetector(ws, deviceID, alias) {
-        // Give device 10 seconds to send a register message
-        ws.staleConnectionTimeout = setTimeout(() => {
-            if (!ws.deviceid) {
-                console.log(`⚠️  ${deviceID} "${alias}" connected but hasn't re-registered (possible stale session)`);
-                console.log(`   🔄 Forcing reconnection to ensure fresh registration...`);
-                
-                // Close with specific message
-                ws.close(1008, 'Please re-register - possible stale session');
-            }
-        }, 10000); // 10 seconds
     }
 
     /**
@@ -410,10 +412,6 @@ if (identification) {
                 clearTimeout(ws.firstMessageTimeout);
                 ws.firstMessageTimeout = null;
             }
-            if (ws.staleConnectionTimeout) {
-                clearTimeout(ws.staleConnectionTimeout);
-                ws.staleConnectionTimeout = null;
-            }
 
             // If device was identified, update diagnostics and emit event
             if (deviceID && DeviceIdentification.isValidDeviceID(deviceID)) {
@@ -521,8 +519,8 @@ if (identification) {
      */
     static #setupFirstMessageTimeout(ws, deviceIP, macAddress) {
         ws.firstMessageTimeout = setTimeout(() => {
-            // **CRITICAL FIX: Only apply if device hasn't identified/registered**
-            if (!ws.deviceid && !ws.receivedFirstMessage) {
+            // Only apply if device hasn't sent any messages
+            if (!ws.receivedFirstMessage) {
                 const identification = DeviceIdentification.findDeviceByNetworkInfo(deviceIP, macAddress);
                 
                 if (identification) {
@@ -546,8 +544,8 @@ if (identification) {
                     ws.close(1008, 'No messages received');
                 }
             } else if (LOGGING_CONFIG.VERBOSE) {
-                // **Device has identified or sent messages - this is NORMAL**
-                console.log(`✅ Device ${ws.deviceid || 'at ' + deviceIP} is registered and working normally`);
+                // Device has sent messages - this is NORMAL
+                console.log(`✅ Device ${ws.deviceid || 'at ' + deviceIP} is communicating normally`);
             }
         }, WEBSOCKET_CONFIG.FIRST_MESSAGE_TIMEOUT);
     }

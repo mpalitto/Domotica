@@ -63,24 +63,41 @@ export class CloudRegistration {
      * Build registration message
      */
     static buildRegistrationMessage(deviceID) {
-        // Use the device's original registration message if available
-        if (sONOFF[deviceID] && sONOFF[deviceID].registerSTR) {
-            CloudLogger.log('🔁 Using device original registration message', {
-                deviceID,
-                message: sONOFF[deviceID].registerSTR
-            });
-            
-            console.log(`📝 Using device's original registration message`);
-            return sONOFF[deviceID].registerSTR;
+        // Get device's ORIGINAL apikey (not proxyAPIKey!)
+        const deviceOriginalApiKey = sONOFF[deviceID].conn?.deviceApiKey || 
+                                      sONOFF[deviceID].conn?.apikey;
+        
+        if (!deviceOriginalApiKey) {
+            console.log(`⚠️  No device apikey found for ${deviceID}`);
+            return null;
         }
         
-        // Fallback: construct a device-like registration
-        const deviceApiKey = sONOFF[deviceID].conn.apikey;
+        // Use the device's original registration message if available
+        if (sONOFF[deviceID] && sONOFF[deviceID].registerSTR) {
+            // Parse and replace apikey with device's original
+            try {
+                const regObj = JSON.parse(sONOFF[deviceID].registerSTR);
+                regObj.apikey = deviceOriginalApiKey;  // Use device's original apikey
+                
+                const registerMessage = JSON.stringify(regObj);
+                
+                CloudLogger.log('🔁 Using device original registration message', {
+                    deviceID,
+                    message: regObj
+                });
+                
+                console.log(`📝 Using device's original registration with device apikey`);
+                return registerMessage;
+            } catch (err) {
+                console.log(`⚠️  Could not parse stored registration: ${err.message}`);
+            }
+        }
         
+        // Fallback: construct registration using device's original apikey
         const regObj = {
             action: 'register',
             deviceid: deviceID,
-            apikey: deviceApiKey,
+            apikey: deviceOriginalApiKey,  // ← Device's ORIGINAL apikey
             userAgent: 'device',
             sequence: Date.now().toString(),
             ts: 0,
@@ -91,12 +108,12 @@ export class CloudRegistration {
         
         const registerMessage = JSON.stringify(regObj);
         
-        CloudLogger.log('⚠️ No original registration found, constructed new one', {
+        CloudLogger.log('⚠️ Constructed new registration with device apikey', {
             deviceID,
             message: regObj
         });
         
-        console.log('⚠️ No original registration stored, constructing device registration');
+        console.log('⚠️ Constructing device registration with original apikey');
         
         return registerMessage;
     }
