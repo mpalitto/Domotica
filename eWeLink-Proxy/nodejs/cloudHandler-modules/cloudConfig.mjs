@@ -8,8 +8,8 @@ Configuration constants for cloud connections
 
 export const CLOUD_CONFIG = {
     // The cloud requires an application-level message (action: 'query')
-    // to be sent roughly every 145 seconds. We use 10 seconds as a safe margin.
-    HEARTBEAT_INTERVAL_MS: 10000,
+    // to be sent roughly every 145 seconds. We use 120 seconds as a safe margin.
+    HEARTBEAT_INTERVAL_MS: 120000,
     
     // Registration timeout - if we don't get a response in 30s, consider it failed
     REGISTRATION_TIMEOUT_MS: 30000,

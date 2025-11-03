@@ -268,6 +268,6 @@ export const sONOFFserver = {
       } else {
         console.log('⚠️  Timeout fired but WebSocket already closed for: ' + ws['deviceid']);
       }
-    }, 30000); // 30 seconds in milliseconds
+    }, 300000); // 300 seconds in milliseconds
   }
 };
