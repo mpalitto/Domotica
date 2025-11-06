@@ -1,13 +1,15 @@
 /*
 Author: Matteo Palitto
-Date: January 9, 2024
+Date: January 9, 2024 (Updated)
 
 Description: cloudDispatch.mjs
 Handles cloud server discovery via dispatch
+Updated to use three-state system
 */
 
 import https from 'https';
-import { sONOFF, proxyEvent } from '../sharedVARs.js';
+import { sONOFF, proxyEvent, ConnectionState } from '../sharedVARs.js';
+import { DeviceTracking } from '../requestHandler-modules/deviceTracking.mjs';
 import { CloudLogger } from './cloudLogger.mjs';
 import { CLOUD_CONFIG } from './cloudConfig.mjs';
 
@@ -23,15 +25,26 @@ export class CloudDispatch {
         
         console.log(`📡 Getting cloud dispatch for device ${deviceID}...`);
         
-        // Get device's apikey
-        const apikey = sONOFF[deviceID].conn.apikey;
+        // Update state to DISPATCH
+        DeviceTracking.setCloudConnectionState(deviceID, ConnectionState.DISPATCH);
+        
+        // Get device's ORIGINAL apikey (not proxyAPIKey!)
+        const deviceApiKey = sONOFF[deviceID].conn.deviceApiKey;
+        
+        if (!deviceApiKey) {
+            const error = 'Missing deviceApiKey';
+            console.log(`❌ ${error} for device ${deviceID}`);
+            DeviceTracking.setCloudConnectionState(deviceID, ConnectionState.OFFLINE);
+            if (onError) onError(error);
+            return;
+        }
         
         const postData = JSON.stringify({
             accept: 'ws',
             version: CLOUD_CONFIG.DEFAULT_VERSION,
             ts: Math.floor(Date.now() / 1000),
             deviceid: deviceID,
-            apikey: apikey,
+            apikey: deviceApiKey,  // ← Use device's ORIGINAL apikey
             model: CLOUD_CONFIG.DEFAULT_MODEL,
             romVersion: CLOUD_CONFIG.DEFAULT_ROM_VERSION,
             imei: deviceID
@@ -82,6 +95,8 @@ export class CloudDispatch {
                         console.log(`✅ Cloud dispatch successful for ${deviceID}`);
                         console.log(`   Cloud server: ${response.IP}:${response.port}`);
                         
+                        // State remains DISPATCH, will move to WS_CONNECTED when WebSocket connects
+                        
                         if (onSuccess) {
                             onSuccess(cloudUrl);
                         }
@@ -95,6 +110,8 @@ export class CloudDispatch {
                         console.log('❌ Dispatch error for device', deviceID);
                         console.log('   Error code:', response.error);
                         console.log('   Response:', response);
+                        
+                        DeviceTracking.setCloudConnectionState(deviceID, ConnectionState.OFFLINE);
                         
                         if (onError) {
                             onError(`Dispatch error: ${response.error}`);
@@ -110,6 +127,8 @@ export class CloudDispatch {
                     });
                     
                     console.log('❌ Error parsing cloud dispatch response:', err);
+                    
+                    DeviceTracking.setCloudConnectionState(deviceID, ConnectionState.OFFLINE);
                     
                     if (onError) {
                         onError(`Parse error: ${err.message}`);
@@ -131,6 +150,8 @@ export class CloudDispatch {
             console.log('❌ Error getting cloud dispatch for device', deviceID, ':', err.message);
             console.log('💡 Check /etc/hosts or DNS configuration');
             
+            DeviceTracking.setCloudConnectionState(deviceID, ConnectionState.OFFLINE);
+            
             if (onError) {
                 onError(`Dispatch request error: ${err.message}`);
             }
@@ -142,6 +163,8 @@ export class CloudDispatch {
             CloudLogger.log('⏱️ HTTPS request timeout', { deviceID });
             console.log('⏱️ HTTPS request timeout for device', deviceID);
             req.destroy();
+            
+            DeviceTracking.setCloudConnectionState(deviceID, ConnectionState.OFFLINE);
             
             if (onError) {
                 onError('Dispatch timeout');

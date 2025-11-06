@@ -32,24 +32,40 @@ const deviceStats = {};
 // Object to store connection diagnostics and timestamps
 const deviceDiagnostics = {};
 
+// **NEW: Connection state enums**
+const ConnectionState = {
+  OFFLINE: 'OFFLINE',
+  DISPATCH: 'DISPATCH',
+  WS_CONNECTED: 'WS-CONNECTED',
+  REGISTERED: 'REGISTERED',
+  ONLINE: 'ONLINE'
+};
+
+const SwitchState = {
+  UNKNOWN: 'UNKNOWN',
+  ON: 'ON',
+  OFF: 'OFF'
+};
+
 // Debug mode configuration
 const debugMode = {
   enabled: false,
-  deviceId: null
+  deviceId: null,
+  autoEnabled: false  // Track if debug was auto-enabled vs manual
 };
 
 // Cloud protocol debug mode configuration
 const cloudDebugMode = {
   enabled: false,
-  logFile: LOGS_DIR + '/test-cloud-protocol.log'  // **MODIFIED: Added logs/ prefix**
+  logFile: LOGS_DIR + '/test-cloud-protocol.log'
 };
 
-// **NEW: Protocol capture mode configuration**
+// Protocol capture mode configuration
 const protocolCapture = {
   enabled: false,
   ip: null,
-  deviceId: null, // Will be set after dispatch
-  logFile: null   // Will be set after dispatch (will include logs/ prefix)
+  deviceId: null,
+  logFile: null
 };
 
 // Transparent capture mode
@@ -57,9 +73,9 @@ const transparentMode = {
     enabled: false,
     deviceId: null,
     deviceIp: null,
-    logFile: null,  // Will include logs/ prefix
-    cloudWS: null,      // Store cloud WebSocket for transparent forwarding
-    matchedByIp: false  // Track if we're matching by IP
+    logFile: null,
+    cloudWS: null,
+    matchedByIp: false
 };
 
 module.exports = {
@@ -79,5 +95,7 @@ module.exports = {
   debugMode,
   cloudDebugMode,
   protocolCapture,
-  transparentMode
+  transparentMode,
+  ConnectionState,  // Export enums
+  SwitchState
 };

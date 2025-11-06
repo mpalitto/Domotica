@@ -1,13 +1,15 @@
 /*
 Author: Matteo Palitto
-Date: January 9, 2024
+Date: January 9, 2024 (Updated)
 
 Description: cloudConnectionManager.mjs
 High-level cloud connection management
+Integrated with three-state system
 */
 
 import WebSocket from 'ws';
-import { sONOFF, proxyAPIKey, proxyEvent } from '../sharedVARs.js';
+import { sONOFF, proxyEvent, ConnectionState } from '../sharedVARs.js';
+import { DeviceTracking } from '../requestHandler-modules/deviceTracking.mjs';
 import { CloudLogger } from './cloudLogger.mjs';
 import { CloudDispatch } from './cloudDispatch.mjs';
 import { CloudWebSocket } from './cloudWebSocket.mjs';
@@ -28,7 +30,7 @@ export class CloudConnectionManager {
         console.log(`🌐 INITIATING CLOUD CONNECTION FOR DEVICE: ${deviceID}`);
         console.log(`${'='.repeat(80)}\n`);
         
-        // Validate device exists
+        // Validate device exists and has necessary data
         if (!this.#validateDevice(deviceID)) {
             return;
         }
@@ -38,11 +40,23 @@ export class CloudConnectionManager {
             return;
         }
         
-        CloudLogger.log('✅ Device has valid connection info, proceeding to dispatch', {
+        // Validate we have device's original API key
+        const deviceApiKey = sONOFF[deviceID].conn.deviceApiKey;
+        if (!deviceApiKey) {
+            console.log(`❌ Cannot connect to cloud: device ${deviceID} has no deviceApiKey stored`);
+            console.log(`   This should have been stored during device registration`);
+            DeviceTracking.setCloudConnectionState(deviceID, ConnectionState.OFFLINE);
+            proxyEvent.emit('cloudConnectionFailed', deviceID, 'No deviceApiKey');
+            return;
+        }
+        
+        CloudLogger.log('✅ Device has valid deviceApiKey, proceeding to dispatch', {
             deviceID,
-            apiKey: sONOFF[deviceID].conn.apikey,
+            deviceApiKey: deviceApiKey.substring(0, 8) + '...',
             alias: sONOFF[deviceID].alias
         });
+        
+        console.log(`📋 Using device's original apikey: ${deviceApiKey.substring(0, 8)}...`);
         
         // Get cloud server via dispatch
         CloudDispatch.getCloudServer(
@@ -52,6 +66,7 @@ export class CloudConnectionManager {
             },
             (error) => {
                 console.log(`❌ Failed to get cloud server for ${deviceID}: ${error}`);
+                DeviceTracking.setCloudConnectionState(deviceID, ConnectionState.OFFLINE);
             }
         );
     }
@@ -73,6 +88,7 @@ export class CloudConnectionManager {
                 deviceData: sONOFF[deviceID]
             });
             console.log('❌ Cannot connect to cloud: device', deviceID, 'has no connection info');
+            DeviceTracking.setCloudConnectionState(deviceID, ConnectionState.OFFLINE);
             proxyEvent.emit('cloudConnectionFailed', deviceID, 'No connection info');
             return false;
         }
@@ -107,6 +123,7 @@ export class CloudConnectionManager {
 
     /**
      * Forward message to cloud
+     * Uses appropriate API key based on registration status
      */
     static forward2cloud(deviceID, message) {
         if (!deviceID) {
@@ -117,35 +134,8 @@ export class CloudConnectionManager {
         
         const cloudWS = CloudWebSocket.getConnection(deviceID);
         
-        if (cloudWS && cloudWS.readyState === WebSocket.OPEN) {
-            CloudLogger.log('⬆️ FORWARDING TO CLOUD', {
-                deviceID,
-                originalMessage: message
-            });
-            
-            // Replace proxy apikey with device's CLOUD apikey
-            let cloudMessage = message;
-            if (sONOFF[deviceID] && sONOFF[deviceID].conn) {
-                const apikeyToUse = sONOFF[deviceID].conn.cloudApiKey || sONOFF[deviceID].conn.apikey;
-                
-                cloudMessage = message.replace(
-                    new RegExp(proxyAPIKey, 'g'),  
-                    apikeyToUse
-                );
-                
-                CloudLogger.log('🔑 API key replaced', {
-                    usingCloudApiKey: !!sONOFF[deviceID].conn.cloudApiKey,
-                    cloudMessage: cloudMessage
-                });
-                
-                console.log(`🔑 Using ${sONOFF[deviceID].conn.cloudApiKey ? 'cloud-provided' : 'device'} apikey for cloud communication`);
-            }
-            
-            cloudWS.send(cloudMessage);
-            
-            console.log(`⬆️  Forwarded to cloud for device ${deviceID}`);
-        } else {
-            CloudLogger.log('⚠️ CANNOT FORWARD TO CLOUD: connection not present or not open', {
+        if (!cloudWS || cloudWS.readyState !== WebSocket.OPEN) {
+            CloudLogger.log('⚠️ CANNOT FORWARD TO CLOUD: connection not open', {
                 deviceID,
                 connectionExists: !!cloudWS,
                 wsState: cloudWS ? ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'][cloudWS.readyState] : 'no websocket'
@@ -156,7 +146,48 @@ export class CloudConnectionManager {
             if (cloudWS) {
                 console.log(`   Connection state: ${['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'][cloudWS.readyState]}`);
             }
+            return;
         }
+        
+        // **FIXED: Use correct API key based on registration status**
+        let cloudMessage = message;
+        
+        if (sONOFF[deviceID] && sONOFF[deviceID].conn) {
+            // Priority: Use cloud-provided key if available, otherwise device's original key
+            const cloudApiKey = sONOFF[deviceID].conn.cloudApiKey;  // Set after successful registration
+            const deviceApiKey = sONOFF[deviceID].conn.deviceApiKey; // Original device key
+            
+            const keyToUse = cloudApiKey || deviceApiKey;
+            
+            if (!keyToUse) {
+                console.log(`❌ Cannot forward to cloud: no API key available for ${deviceID}`);
+                return;
+            }
+            
+            // Replace any apikey in message with the cloud key
+            const apikeyRegex = /"apikey"\s*:\s*"[^"]+"/g;
+            cloudMessage = message.replace(apikeyRegex, `"apikey":"${keyToUse}"`);
+            
+            CloudLogger.log('🔑 API key replaced for cloud', {
+                usingCloudApiKey: !!cloudApiKey,
+                usingDeviceApiKey: !cloudApiKey && !!deviceApiKey,
+                keyUsed: keyToUse.substring(0, 8) + '...'
+            });
+            
+            if (cloudApiKey) {
+                console.log(`🔑 Using cloud-provided apikey for ${deviceID}`);
+            } else {
+                console.log(`🔑 Using device original apikey for ${deviceID} (not yet registered)`);
+            }
+        }
+        
+        CloudLogger.log('⬆️ FORWARDING TO CLOUD', {
+            deviceID,
+            cloudMessage: cloudMessage
+        });
+        
+        cloudWS.send(cloudMessage);
+        console.log(`⬆️  Forwarded to cloud for device ${deviceID}`);
     }
 
     /**
@@ -170,7 +201,6 @@ export class CloudConnectionManager {
         }
         
         CloudLogger.log('🔒 CLOSING CLOUD CONNECTION', { deviceID });
-        
         console.log(`🔒 Closing cloud connection for device: ${deviceID}`);
         
         // Clear registration timeout
@@ -186,15 +216,17 @@ export class CloudConnectionManager {
             console.log(`   ✅ Terminated`);
         }
         
+        // Update cloud connection state
+        DeviceTracking.setCloudConnectionState(deviceID, ConnectionState.OFFLINE);
+        
         // Clean up sONOFF reference
         if (sONOFF[deviceID]) {
             if (sONOFF[deviceID]['cloudWS']) {
                 delete sONOFF[deviceID]['cloudWS'];
             }
-            sONOFF[deviceID].cloudConnected = false;
         }
         
-        // Emit event
+        // Emit event (will be handled by messageHandler to update states)
         proxyEvent.emit('cloudConnectionClosed', deviceID);
     }
 }

@@ -1,13 +1,15 @@
 /*
 Author: Matteo Palitto
-Date: January 9, 2024
+Date: January 9, 2024 (Updated)
 
 Description: cloudWebSocket.mjs
 Manages WebSocket connections to cloud servers
+Integrated with three-state system
 */
 
 import WebSocket from 'ws';
-import { sONOFF, proxyEvent } from '../sharedVARs.js';
+import { sONOFF, proxyEvent, ConnectionState } from '../sharedVARs.js';
+import { DeviceTracking } from '../requestHandler-modules/deviceTracking.mjs';
 import { CloudLogger } from './cloudLogger.mjs';
 import { CloudRegistration } from './cloudRegistration.mjs';
 import { CloudHeartbeat } from './cloudHeartbeat.mjs';
@@ -38,11 +40,13 @@ export class CloudWebSocket {
             rejectUnauthorized: false
         });
         
-        // Store the deviceID in the WebSocket object
+        // Store metadata in the WebSocket object
         ws.deviceID = deviceID;
         ws.cloudUrl = cloudUrl;
         ws.messagesReceived = [];
         ws.registrationComplete = false;
+        ws.heartbeatCount = 0;
+        ws.connectionStartTime = Date.now();
         
         this.#setupEventHandlers(ws);
         
@@ -74,6 +78,9 @@ export class CloudWebSocket {
         
         console.log(`✅ Connected to cloud WebSocket for device: ${deviceID}`);
         
+        // **UPDATE STATE TO WS_CONNECTED**
+        DeviceTracking.setCloudConnectionState(deviceID, ConnectionState.WS_CONNECTED);
+        
         // Store the cloud WebSocket connection
         if (sONOFF[deviceID]) {
             sONOFF[deviceID]['cloudWS'] = ws;
@@ -97,8 +104,18 @@ export class CloudWebSocket {
         // Build and send registration message
         const registerMessage = CloudRegistration.buildRegistrationMessage(deviceID);
         
+        if (!registerMessage) {
+            console.log(`❌ Failed to build registration message for ${deviceID}`);
+            DeviceTracking.setCloudConnectionState(deviceID, ConnectionState.OFFLINE);
+            ws.close(1008, 'Cannot build registration');
+            return;
+        }
+        
         CloudLogger.log('📤 Sending registration to cloud', JSON.parse(registerMessage));
         console.log(`📤 Sending registration to cloud...`);
+        
+        // **UPDATE STATE TO REGISTERED (optimistic, will revert on error)**
+        DeviceTracking.setCloudConnectionState(deviceID, ConnectionState.REGISTERED);
         
         ws.send(registerMessage);
     }
@@ -140,13 +157,16 @@ export class CloudWebSocket {
             deviceID: deviceID,
             error: err.message,
             code: err.code,
-            stack: err.stack
+            stack: err.stack,
+            currentState: sONOFF[deviceID]?.cloudConnectionState
         });
         
         console.log(`❌ Cloud WebSocket error for device ${deviceID}:`, err.message);
+        console.log(`   Current cloud state: ${sONOFF[deviceID]?.cloudConnectionState || 'unknown'}`);
         
-        // If error occurs before registration completes, emit failure
+        // If error occurs before registration completes, update state and emit failure
         if (!ws.registrationComplete) {
+            DeviceTracking.setCloudConnectionState(deviceID, ConnectionState.OFFLINE);
             proxyEvent.emit('cloudConnectionFailed', deviceID, `WebSocket error: ${err.message}`);
         }
     }
@@ -158,14 +178,13 @@ export class CloudWebSocket {
         const deviceID = ws.deviceID;
         const url = ws.cloudUrl;
         const wasRegistered = ws.registrationComplete;
+        const connectionDuration = ((Date.now() - ws.connectionStartTime) / 1000).toFixed(1);
 
         // Clear registration timeout
         CloudRegistration.clearTimeout(deviceID);
 
-        // Mark cloud as disconnected
-        if (sONOFF[deviceID]) {
-            sONOFF[deviceID]['cloudConnected'] = false;
-        }
+        // **UPDATE STATE TO OFFLINE**
+        DeviceTracking.setCloudConnectionState(deviceID, ConnectionState.OFFLINE);
 
         // Log all messages received before close
         CloudLogger.log('🔌 CLOUD WEBSOCKET CLOSED', {
@@ -174,11 +193,13 @@ export class CloudWebSocket {
             reason: reason.toString() || 'No reason provided',
             timestamp: new Date().toISOString(),
             wasRegistered: wasRegistered,
+            connectionDuration: connectionDuration + 's',
             messagesReceivedBeforeClose: ws.messagesReceived,
-            totalMessagesReceived: ws.messagesReceived.length
+            totalMessagesReceived: ws.messagesReceived.length,
+            heartbeatsSent: ws.heartbeatCount || 0
         });
         
-        this.#logCloseDetails(deviceID, code, reason, wasRegistered, ws.messagesReceived);
+        this.#logCloseDetails(deviceID, code, reason, wasRegistered, connectionDuration, ws);
         
         // Clean up heartbeat
         CloudHeartbeat.stop(deviceID);
@@ -193,18 +214,22 @@ export class CloudWebSocket {
             remainingConnections: cloudConnections.size
         });
         
-        // Emit cloudConnectionClosed event
+        // Emit cloudConnectionClosed event (handled by messageHandler)
         console.log(`📢 Emitting cloudConnectionClosed event for device ${deviceID}`);
         proxyEvent.emit('cloudConnectionClosed', deviceID);
         
-        // Auto-reconnect if device is still online locally
-        this.#attemptReconnect(deviceID, url);
+        // Auto-reconnect if device is still online locally AND was successfully registered
+        if (wasRegistered) {
+            this.#attemptReconnect(deviceID, url);
+        } else {
+            console.log(`ℹ️  Not reconnecting ${deviceID} - never successfully registered`);
+        }
     }
 
     /**
      * Log close details
      */
-    static #logCloseDetails(deviceID, code, reason, wasRegistered, messages) {
+    static #logCloseDetails(deviceID, code, reason, wasRegistered, duration, ws) {
         console.log('\n' + '='.repeat(80));
         console.log('🔌 CLOUD WEBSOCKET CLOSED');
         console.log('='.repeat(80));
@@ -212,22 +237,28 @@ export class CloudWebSocket {
         console.log('Alias:', sONOFF[deviceID]?.alias || 'unknown');
         console.log('Close code:', code);
         console.log('Reason:', reason.toString() || 'No reason');
+        console.log('Duration:', duration + 's');
         console.log('Was registered:', wasRegistered ? 'Yes' : 'No');
-        console.log('Messages received:', messages.length);
+        console.log('Messages received:', ws.messagesReceived.length);
+        console.log('Heartbeats sent:', ws.heartbeatCount || 0);
         
-        if (messages.length > 0) {
+        if (ws.messagesReceived.length > 0) {
             console.log('\n📨 Messages from cloud before disconnect:');
-            messages.forEach((msg, idx) => {
+            ws.messagesReceived.slice(0, 5).forEach((msg, idx) => {
                 console.log(`  [${idx + 1}] ${msg.timestamp}`);
                 console.log(`      ${msg.message.substring(0, 200)}${msg.message.length > 200 ? '...' : ''}`);
             });
+            if (ws.messagesReceived.length > 5) {
+                console.log(`  ... and ${ws.messagesReceived.length - 5} more messages`);
+            }
         } else {
             console.log('\n⚠️  NO messages received from cloud before disconnect!');
             console.log('    Possible causes:');
             console.log('    1. Cloud rejected the registration message');
-            console.log('    2. Device already connected to cloud from another proxy');
+            console.log('    2. Device already connected to cloud from another source');
             console.log('    3. Invalid API key or device credentials');
             console.log('    4. Cloud detected duplicate device connection');
+            console.log('    5. Network connectivity issue');
         }
         console.log('='.repeat(80) + '\n');
     }
@@ -237,22 +268,35 @@ export class CloudWebSocket {
      */
     static #attemptReconnect(deviceID, url) {
         // Check if device is still online locally
-        if (!sONOFF[deviceID] || !sONOFF[deviceID].conn || !sONOFF[deviceID].conn.ws) {
+        const device = sONOFF[deviceID];
+        
+        if (!device) {
+            CloudLogger.log('ℹ️ No reconnection scheduled - device removed', { deviceID });
+            console.log(`ℹ️  Device ${deviceID} removed - not reconnecting to cloud`);
+            return;
+        }
+        
+        // Check local connection state
+        const localState = device.localConnectionState;
+        const isLocalOnline = localState === ConnectionState.ONLINE || localState === ConnectionState.REGISTERED;
+        
+        if (!isLocalOnline) {
             CloudLogger.log('ℹ️ No reconnection scheduled', {
                 deviceID: deviceID,
-                reason: 'Device offline locally'
+                reason: 'Device not online locally',
+                localState: localState
             });
-            console.log(`ℹ️  Device ${deviceID} offline locally - not reconnecting to cloud`);
+            console.log(`ℹ️  Device ${deviceID} not online locally (${localState}) - not reconnecting to cloud`);
             
             // Reset reconnect counter
-            if (sONOFF[deviceID]) {
-                sONOFF[deviceID].cloudReconnectAttempts = 0;
+            if (device) {
+                device.cloudReconnectAttempts = 0;
             }
             return;
         }
 
         // Get reconnect attempts
-        const reconnectAttempts = sONOFF[deviceID].cloudReconnectAttempts || 0;
+        const reconnectAttempts = device.cloudReconnectAttempts || 0;
         
         // Don't reconnect if too many failed attempts
         if (reconnectAttempts >= CLOUD_CONFIG.MAX_RECONNECT_ATTEMPTS) {
@@ -265,6 +309,7 @@ export class CloudWebSocket {
             console.log('    - Device may already be connected to cloud directly');
             console.log('    - Invalid credentials or API key');
             console.log('    - Cloud server rejecting the connection');
+            console.log('    💡 Try: Restart device or check device credentials');
             return;
         }
         
@@ -274,7 +319,7 @@ export class CloudWebSocket {
             CLOUD_CONFIG.RECONNECT_MAX_DELAY_MS
         );
         
-        sONOFF[deviceID].cloudReconnectAttempts = reconnectAttempts + 1;
+        device.cloudReconnectAttempts = reconnectAttempts + 1;
         
         CloudLogger.log('🔄 Scheduling reconnection', {
             deviceID: deviceID,
@@ -283,9 +328,20 @@ export class CloudWebSocket {
             reason: 'Device still online locally'
         });
         
-        console.log(`🔄 Device ${deviceID} still online - reconnecting to cloud in ${reconnectDelay/1000}s... (attempt ${reconnectAttempts + 1})`);
+        console.log(`🔄 Device ${deviceID} still online locally - reconnecting to cloud in ${reconnectDelay/1000}s... (attempt ${reconnectAttempts + 1}/${CLOUD_CONFIG.MAX_RECONNECT_ATTEMPTS})`);
         
         const timer = setTimeout(() => {
+            // Double-check device is still online before reconnecting
+            const currentLocalState = sONOFF[deviceID]?.localConnectionState;
+            const stillOnline = currentLocalState === ConnectionState.ONLINE || 
+                              currentLocalState === ConnectionState.REGISTERED;
+            
+            if (!stillOnline) {
+                console.log(`ℹ️  Device ${deviceID} went offline - cancelling cloud reconnect`);
+                reconnectTimers.delete(deviceID);
+                return;
+            }
+            
             CloudLogger.log('🔄 Attempting reconnection', {  
                 deviceID: deviceID,
                 attemptNumber: reconnectAttempts + 1

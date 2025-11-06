@@ -6,7 +6,7 @@ Description: deviceTracking.mjs
 Handles device statistics and diagnostics tracking
 */
 
-import { deviceStats, deviceDiagnostics, sONOFF } from '../sharedVARs.js';
+import { deviceStats, deviceDiagnostics, sONOFF, ConnectionState, SwitchState } from '../sharedVARs.js';
 import { DIAGNOSTIC_CONFIG } from './config.mjs';
 
 export class DeviceTracking {
@@ -59,9 +59,147 @@ export class DeviceTracking {
                 wsToRegisterDelay: null,
                 connectionErrors: [],
                 tlsErrors: [],
-                allConnectionAttempts: []
+                allConnectionAttempts: [],
+                usingSyntheticDispatch: false  // Track synthetic vs real dispatch
             };
         }
+    }
+
+    /**
+     * Initialize device object with proper state variables
+     */
+    static initDeviceObject(deviceID, alias = null) {
+        if (!sONOFF[deviceID]) {
+            sONOFF[deviceID] = {};
+        }
+        
+        const device = sONOFF[deviceID];
+        
+        // Initialize state variables if they don't exist
+        if (typeof device.localConnectionState === 'undefined') {
+            device.localConnectionState = ConnectionState.OFFLINE;
+        }
+        if (typeof device.cloudConnectionState === 'undefined') {
+            device.cloudConnectionState = ConnectionState.OFFLINE;
+        }
+        if (typeof device.switchState === 'undefined') {
+            device.switchState = SwitchState.UNKNOWN;
+        }
+        
+        // Initialize legacy compatibility flags (computed from states)
+        if (typeof device.isOnline === 'undefined') {
+            device.isOnline = false;
+        }
+        if (typeof device.cloudConnected === 'undefined') {
+            device.cloudConnected = false;
+        }
+        
+        // Initialize alias if provided
+        if (alias && !device.alias) {
+            device.alias = alias;
+        } else if (!device.alias) {
+            device.alias = 'new-' + deviceID;
+        }
+        
+        return device;
+    }
+
+    /**
+     * Update local connection state
+     */
+    static setLocalConnectionState(deviceID, newState) {
+        this.initDeviceObject(deviceID);
+        const oldState = sONOFF[deviceID].localConnectionState;
+        sONOFF[deviceID].localConnectionState = newState;
+        
+        console.log(`🔄 ${deviceID} local: ${oldState} → ${newState}`);
+        
+        // Update legacy isOnline flag based on BOTH states
+        this.#updateOnlineStatus(deviceID);
+    }
+
+    /**
+     * Update cloud connection state
+     */
+    static setCloudConnectionState(deviceID, newState) {
+        this.initDeviceObject(deviceID);
+        const oldState = sONOFF[deviceID].cloudConnectionState;
+        sONOFF[deviceID].cloudConnectionState = newState;
+        
+        console.log(`☁️  ${deviceID} cloud: ${oldState} → ${newState}`);
+        
+        // Update legacy cloudConnected flag
+        sONOFF[deviceID].cloudConnected = (newState === ConnectionState.ONLINE);
+        
+        // Update legacy isOnline flag based on BOTH states
+        this.#updateOnlineStatus(deviceID);
+    }
+
+    /**
+     * Update switch state
+     */
+    static setSwitchState(deviceID, newState) {
+        this.initDeviceObject(deviceID);
+        
+        // Normalize state to uppercase enum value
+        const normalizedState = newState.toUpperCase();
+        
+        if (!Object.values(SwitchState).includes(normalizedState)) {
+            console.warn(`⚠️  Invalid switch state: ${newState} for ${deviceID}`);
+            return;
+        }
+        
+        const oldState = sONOFF[deviceID].switchState;
+        if (oldState !== normalizedState) {
+            sONOFF[deviceID].switchState = normalizedState;
+            console.log(`💡 ${deviceID} "${sONOFF[deviceID].alias}": ${oldState} → ${normalizedState}`);
+        }
+    }
+
+    /**
+     * Private: Update legacy isOnline status based on both connection states
+     */
+    static #updateOnlineStatus(deviceID) {
+        const device = sONOFF[deviceID];
+        
+        // Device is "online" if BOTH local and cloud are ONLINE
+        const fullyOnline = (
+            device.localConnectionState === ConnectionState.ONLINE &&
+            device.cloudConnectionState === ConnectionState.ONLINE
+        );
+        
+        // Update legacy flag
+        const wasOnline = device.isOnline;
+        device.isOnline = fullyOnline;
+        
+        // Log status changes
+        if (wasOnline !== fullyOnline) {
+            if (fullyOnline) {
+                console.log(`✅ ${deviceID} "${device.alias}" FULLY ONLINE`);
+                this.initDiagnostics(deviceID);
+                deviceDiagnostics[deviceID].lastOnlineTime = new Date().toISOString();
+            } else {
+                console.log(`⚠️  ${deviceID} "${device.alias}" not fully online (local: ${device.localConnectionState}, cloud: ${device.cloudConnectionState})`);
+            }
+        }
+    }
+
+    /**
+     * Get human-readable status summary for a device
+     */
+    static getDeviceStatus(deviceID) {
+        const device = sONOFF[deviceID];
+        if (!device) return 'UNKNOWN';
+        
+        return {
+            deviceID,
+            alias: device.alias || 'unknown',
+            localState: device.localConnectionState || ConnectionState.OFFLINE,
+            cloudState: device.cloudConnectionState || ConnectionState.OFFLINE,
+            switchState: device.switchState || SwitchState.UNKNOWN,
+            isOnline: device.isOnline || false,
+            cloudConnected: device.cloudConnected || false
+        };
     }
 
     /**

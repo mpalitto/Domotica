@@ -1,12 +1,14 @@
 /*
 Author: Matteo Palitto
-Date: January 9, 2024
+Date: January 9, 2024 (Updated)
 
 Description: cloudRegistration.mjs
 Manages cloud registration timeouts and validation
+Fixed to use deviceApiKey consistently
 */
 
-import { sONOFF, proxyEvent } from '../sharedVARs.js';
+import { sONOFF, proxyEvent, ConnectionState } from '../sharedVARs.js';
+import { DeviceTracking } from '../requestHandler-modules/deviceTracking.mjs';
 import { CloudLogger } from './cloudLogger.mjs';
 import { CLOUD_CONFIG } from './cloudConfig.mjs';
 
@@ -31,6 +33,9 @@ export class CloudRegistration {
                 
                 console.log(`❌ Registration timeout for device ${deviceID} (${CLOUD_CONFIG.REGISTRATION_TIMEOUT_MS / 1000}s)`);
                 console.log(`   Received ${ws.messagesReceived.length} messages but no successful registration response`);
+                
+                // Update state
+                DeviceTracking.setCloudConnectionState(deviceID, ConnectionState.OFFLINE);
                 
                 // Emit failure event
                 proxyEvent.emit('cloudConnectionFailed', deviceID, 'Registration timeout');
@@ -61,14 +66,15 @@ export class CloudRegistration {
 
     /**
      * Build registration message
+     * Uses device's ORIGINAL apikey (not proxyAPIKey!)
      */
     static buildRegistrationMessage(deviceID) {
-        // Get device's ORIGINAL apikey (not proxyAPIKey!)
-        const deviceOriginalApiKey = sONOFF[deviceID].conn?.deviceApiKey || 
-                                      sONOFF[deviceID].conn?.apikey;
+        // Get device's ORIGINAL apikey
+        const deviceApiKey = sONOFF[deviceID].conn?.deviceApiKey;
         
-        if (!deviceOriginalApiKey) {
-            console.log(`⚠️  No device apikey found for ${deviceID}`);
+        if (!deviceApiKey) {
+            console.log(`❌ No deviceApiKey found for ${deviceID}`);
+            CloudLogger.log('❌ Cannot build registration: missing deviceApiKey', { deviceID });
             return null;
         }
         
@@ -77,7 +83,7 @@ export class CloudRegistration {
             // Parse and replace apikey with device's original
             try {
                 const regObj = JSON.parse(sONOFF[deviceID].registerSTR);
-                regObj.apikey = deviceOriginalApiKey;  // Use device's original apikey
+                regObj.apikey = deviceApiKey;  // Use device's ORIGINAL apikey
                 
                 const registerMessage = JSON.stringify(regObj);
                 
@@ -86,7 +92,7 @@ export class CloudRegistration {
                     message: regObj
                 });
                 
-                console.log(`📝 Using device's original registration with device apikey`);
+                console.log(`📝 Using device's registration with deviceApiKey: ${deviceApiKey.substring(0, 8)}...`);
                 return registerMessage;
             } catch (err) {
                 console.log(`⚠️  Could not parse stored registration: ${err.message}`);
@@ -97,7 +103,7 @@ export class CloudRegistration {
         const regObj = {
             action: 'register',
             deviceid: deviceID,
-            apikey: deviceOriginalApiKey,  // ← Device's ORIGINAL apikey
+            apikey: deviceApiKey,  // ← Device's ORIGINAL apikey
             userAgent: 'device',
             sequence: Date.now().toString(),
             ts: 0,
@@ -108,12 +114,12 @@ export class CloudRegistration {
         
         const registerMessage = JSON.stringify(regObj);
         
-        CloudLogger.log('⚠️ Constructed new registration with device apikey', {
+        CloudLogger.log('⚠️ Constructed new registration with deviceApiKey', {
             deviceID,
             message: regObj
         });
         
-        console.log('⚠️ Constructing device registration with original apikey');
+        console.log('⚠️ Constructing registration with deviceApiKey');
         
         return registerMessage;
     }

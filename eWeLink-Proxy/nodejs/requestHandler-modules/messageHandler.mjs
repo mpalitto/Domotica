@@ -7,18 +7,20 @@ Handles WebSocket messages from devices and coordinates with cloud
 Supports transparent capture mode for protocol analysis
 
 Key features:
-- Uses device's own apikey (not proxyAPIKey) for responses
-- Stores device's original apikey in cmd file
-- Uses cloud apikey for responses after cloud registration
+- Uses three-state system (localConnectionState, cloudConnectionState, switchState)
+- Uses device's original apikey (deviceApiKey) for cloud connection
+- Uses proxyAPIKey (localApiKey) for local device responses
 - Supports transparent capture mode with IP-based matching
 - Clears timeouts after successful registration
 - Properly handles cloud connection events
 */
 
-import { sONOFF, proxyEvent, proxyAPIKey, deviceStats, deviceDiagnostics, transparentMode } from '../sharedVARs.js';
-import { initDeviceStats, initDeviceDiagnostics, debugLog, markWebSocketSuccess, handleDuplicateConnection } from './requestHandler.mjs';
-import { updateDeviceInCmdFile, getDeviceFromCmdFile } from '../cmd-modules/cmdFileManager.mjs';
+import { sONOFF, proxyEvent, proxyAPIKey, deviceStats, deviceDiagnostics, transparentMode, ConnectionState, SwitchState } from '../sharedVARs.js';
+import { DeviceTracking } from './deviceTracking.mjs';
+import { LoggingService } from './loggingService.mjs';
 import { TransparentMode } from '../transparentMode-modules/transparentMode.mjs';
+import { updateDeviceInCmdFile, getDeviceFromCmdFile } from '../cmd-modules/cmdFileManager.mjs';
+import { startPingMonitoring } from './webSocketHandler.mjs';
 
 // Internal message handling logic
 const messageHandlerInternal = {
@@ -67,7 +69,6 @@ const messageHandlerInternal = {
                 }
             } catch (err) {
                 // Can't parse - might still match by IP
-                // This is OK, we'll check IP match below
             }
             
             // Match by IP (even if message can't be parsed or has no deviceid)
@@ -82,7 +83,7 @@ const messageHandlerInternal = {
                     console.log(`🔍 Transparent: Device IP confirmed: ${cleanIP}`);
                 }
                 
-                // **CRITICAL FIX: Set deviceid on WebSocket so timeouts know device is active**
+                // Set deviceid on WebSocket so timeouts know device is active
                 if (deviceID && !ws['deviceid']) {
                     ws['deviceid'] = deviceID;
                     console.log(`🔍 Transparent: WebSocket deviceid set to ${deviceID}`);
@@ -116,26 +117,10 @@ const messageHandlerInternal = {
             
             // Initialize device object if it doesn't exist yet
             if (ws['deviceid']) {
-                if (!sONOFF[ws['deviceid']]) {
-                    console.log(`⚠️  Initializing device object for ${ws['deviceid']} (received ${msgObj['action']} before proper initialization)`);
-                    sONOFF[ws['deviceid']] = {
-                        state: 'OFFLINE',
-                        isOnline: false,
-                        cloudConnected: false,
-                        alias: 'new-' + ws['deviceid']
-                    };
-                }
-                
-                // Ensure required properties exist
-                if (typeof sONOFF[ws['deviceid']]["isOnline"] === 'undefined') {
-                    sONOFF[ws['deviceid']]["isOnline"] = false;
-                }
-                if (typeof sONOFF[ws['deviceid']]["cloudConnected"] === 'undefined') {
-                    sONOFF[ws['deviceid']]["cloudConnected"] = false;
-                }
+                DeviceTracking.initDeviceObject(ws['deviceid']);
                 
                 // Initialize stats for this device (ensures all fields exist)
-                initDeviceStats(ws['deviceid']);
+                DeviceTracking.initStats(ws['deviceid']);
                 
                 // Increment message counter
                 deviceStats[ws['deviceid']].WEBSOCKET_MSG++;
@@ -155,11 +140,11 @@ const messageHandlerInternal = {
                 }
                 
                 // Initialize stats and diagnostics
-                initDeviceStats(ws['deviceid']);
-                initDeviceDiagnostics(ws['deviceid']);
+                DeviceTracking.initStats(ws['deviceid']);
+                DeviceTracking.initDiagnostics(ws['deviceid']);
                 
                 // **CRITICAL: Mark WebSocket connection success FIRST**
-                markWebSocketSuccess(ws['deviceid'], ws);
+                DeviceTracking.markWebSocketSuccess(ws['deviceid'], ws);
                 
                 // Update registration time
                 deviceDiagnostics[ws['deviceid']].lastRegistrationTime = new Date().toISOString();
@@ -173,44 +158,38 @@ const messageHandlerInternal = {
                 }
                 
                 // Debug logging
-                debugLog(ws['deviceid'], 'DEVICE → PROXY', 'REGISTER REQUEST', ws['msg']);
-                
-                // Ensure device object exists
-                if (!sONOFF[ws['deviceid']]) {
-                    sONOFF[ws['deviceid']] = {};
-                }
+                LoggingService.debugLog(ws['deviceid'], 'DEVICE → PROXY', 'REGISTER REQUEST', ws['msg']);
                 
                 // Check for duplicate connections and close old one
-                handleDuplicateConnection(ws['deviceid'], ws, ws['IP']);
+                this.handleDuplicateConnection(ws['deviceid'], ws, ws['IP']);
                 
-                // Store connection info
-                sONOFF[ws['deviceid']]["conn"] = {};
-                sONOFF[ws['deviceid']]["conn"]['apikey'] = msgObj['apikey'];
+                // Ensure conn object exists
+                if (!sONOFF[ws['deviceid']]["conn"]) {
+                    sONOFF[ws['deviceid']]["conn"] = {};
+                }
+                
+                // Store connection info (will be populated properly in REGISTER handler)
                 sONOFF[ws['deviceid']]["conn"]['ws'] = ws;
-                sONOFF[ws['deviceid']]["state"] = 'Registered'; // Temporary state until cloud connects
-                sONOFF[ws['deviceid']]["isOnline"] = false; // Not fully online until cloud connects
-                sONOFF[ws['deviceid']]["cloudConnected"] = false;
+                
+                // Update local connection state to REGISTERED
+                DeviceTracking.setLocalConnectionState(ws['deviceid'], ConnectionState.REGISTERED);
             }
             
-            // Log important state changes
+            // Log important state changes (switch updates)
             if (msgObj['action'] === 'update' && msgObj.params?.switch) {
-                console.log(`💡 ${ws['deviceid']} "${sONOFF[ws['deviceid']]?.alias || 'unknown'}" → ${msgObj.params.switch.toUpperCase()}`);
+                const newSwitchState = msgObj.params.switch.toUpperCase();
+                DeviceTracking.setSwitchState(ws['deviceid'], newSwitchState);
             }
             
             // Process device-specific logic if we have a valid deviceid
             if (ws['deviceid'] && sONOFF[ws['deviceid']]) {
-                // If device is fully online (registered AND cloud connected), forward messages
+                // If device is fully online (both local and cloud ONLINE), forward messages
                 if (sONOFF[ws['deviceid']]["isOnline"]) {
                     // Debug logging for messages from online devices
-                    debugLog(ws['deviceid'], 'DEVICE → PROXY', 'MESSAGE (ONLINE)', ws['msg']);
+                    LoggingService.debugLog(ws['deviceid'], 'DEVICE → PROXY', 'MESSAGE (ONLINE)', ws['msg']);
                     
                     proxyEvent.emit('messageFromDevice', ws['deviceid'], ws['msg']);
                     proxyEvent.emit('pingReceived', ws['deviceid']);
-                    
-                    // Update local state if it's an update message
-                    if (msgObj['action'] == 'update' && msgObj['params'] && msgObj['params']['switch']) {
-                        sONOFF[ws['deviceid']]['state'] = msgObj['params']['switch'];
-                    }
                 }
             } else if (!ws['deviceid']) {
                 console.log('⚠️  Warning: Received message without deviceid');
@@ -234,6 +213,25 @@ const messageHandlerInternal = {
         }
         return ws['deviceid'];
     },
+
+    /**
+     * Handle duplicate connection (close old one)
+     */
+    handleDuplicateConnection: function(deviceID, newWs, newIP) {
+        if (sONOFF[deviceID] && sONOFF[deviceID].conn && sONOFF[deviceID].conn.ws) {
+            const oldWs = sONOFF[deviceID].conn.ws;
+            
+            // Check if old connection is still open
+            if (oldWs.readyState === 1) { // OPEN
+                console.log(`⚠️  Duplicate connection for ${deviceID} - closing old connection`);
+                console.log(`   Old: ${oldWs.IP}, New: ${newIP}`);
+                
+                oldWs.close(1001, 'Replaced by new connection');
+                return true;
+            }
+        }
+        return false;
+    }
 };
 
 // Export wrapper function
@@ -256,38 +254,48 @@ handleMessage.on('register', (ws) => {
         return;
     }
 
+    const deviceID = ws['deviceid'];
+
     // Ensure stats exist and increment
-    initDeviceStats(ws['deviceid']);
-    deviceStats[ws['deviceid']].REGISTER_REQ++;
+    DeviceTracking.initStats(deviceID);
+    deviceStats[deviceID].REGISTER_REQ++;
 
     // Extract apikey from the register message
     let msgObj = JSON.parse(ws['msg']);
     const receivedApiKey = msgObj['apikey'];
 
-    // Determine if this is first-time registration or reconnection
-    const deviceFromFile = getDeviceFromCmdFile(ws['deviceid']);
+    // Get device info from cmd file
+    const deviceFromFile = getDeviceFromCmdFile(deviceID);
     const isFirstTime = !deviceFromFile || !deviceFromFile.apikey;
 
     if (isFirstTime) {
         // FIRST TIME: Device sends its original apikey
         console.log(`   📝 First-time registration - storing device apikey: ${receivedApiKey.substring(0, 8)}...`);
-        console.log(`   🔄 Instructing device to switch to proxyAPIKey: ${proxyAPIKey.substring(0, 8)}...`);
+        console.log(`   🔄 Instructing device to switch to proxyAPIKey for local control`);
 
         // Store device's ORIGINAL apikey in cmd file (for cloud connection)
         const mac = ws['MAC'] || null;
         const ip = ws['IP'] ? ws['IP'].replace('::ffff:', '') : null;
 
-        if (!sONOFF[ws['deviceid']].alias || sONOFF[ws['deviceid']].alias.startsWith('new-')) {
-            sONOFF[ws['deviceid']]["alias"] = 'new-' + ws['deviceid'];
+        if (!sONOFF[deviceID].alias || sONOFF[deviceID].alias.startsWith('new-')) {
+            sONOFF[deviceID]["alias"] = 'new-' + deviceID;
         }
 
-        updateDeviceInCmdFile(ws['deviceid'], sONOFF[ws['deviceid']]["alias"], mac, ip, receivedApiKey);
+        updateDeviceInCmdFile(deviceID, sONOFF[deviceID]["alias"], mac, ip, receivedApiKey);
+
+        // Store connection info with BOTH keys
+        if (!sONOFF[deviceID]["conn"]) {
+            sONOFF[deviceID]["conn"] = {};
+        }
+        sONOFF[deviceID]["conn"]['deviceApiKey'] = receivedApiKey;  // For cloud
+        sONOFF[deviceID]["conn"]['localApiKey'] = proxyAPIKey;      // For local
+        sONOFF[deviceID]["conn"]['ws'] = ws;
 
         // Tell device to use proxyAPIKey from now on
         const response = JSON.stringify({
             error: 0,
-            deviceid: ws['deviceid'],
-            apikey: proxyAPIKey,  // ← Tell device to use proxyAPIKey
+            deviceid: deviceID,
+            apikey: proxyAPIKey,  // ← Tell device to use proxyAPIKey for local
             config: { hb: 1, hbInterval: 145 }
         });
 
@@ -303,10 +311,18 @@ handleMessage.on('register', (ws) => {
             console.log(`   ⚠️  Unknown apikey received: ${receivedApiKey.substring(0, 8)}...`);
         }
 
+        // Store connection info with BOTH keys
+        if (!sONOFF[deviceID]["conn"]) {
+            sONOFF[deviceID]["conn"] = {};
+        }
+        sONOFF[deviceID]["conn"]['deviceApiKey'] = deviceFromFile.apikey;  // For cloud
+        sONOFF[deviceID]["conn"]['localApiKey'] = proxyAPIKey;             // For local
+        sONOFF[deviceID]["conn"]['ws'] = ws;
+
         // Always respond with proxyAPIKey
         const response = JSON.stringify({
             error: 0,
-            deviceid: ws['deviceid'],
+            deviceid: deviceID,
             apikey: proxyAPIKey,  // ← Always use proxyAPIKey for local control
             config: { hb: 1, hbInterval: 145 }
         });
@@ -314,37 +330,31 @@ handleMessage.on('register', (ws) => {
         ws.send(response);
     }
 
-    deviceStats[ws['deviceid']].REGISTER_ACK++;
+    deviceStats[deviceID].REGISTER_ACK++;
+    startPingMonitoring(ws, deviceID);
 
     // Update alias if needed
-    if (!sONOFF[ws['deviceid']].alias || sONOFF[ws['deviceid']].alias.startsWith('new-')) {
+    if (!sONOFF[deviceID].alias || sONOFF[deviceID].alias.startsWith('new-')) {
         if (deviceFromFile && !deviceFromFile.alias.startsWith('new-')) {
-            sONOFF[ws['deviceid']]["alias"] = deviceFromFile.alias;
+            sONOFF[deviceID]["alias"] = deviceFromFile.alias;
         } else {
-            console.log(`   🆕 New device needs a name - use: name ${ws['deviceid']} <name>`);
+            console.log(`   🆕 New device needs a name - use: name ${deviceID} <name>`);
         }
     }
 
-    // Store connection info
-    if (!sONOFF[ws['deviceid']]["conn"]) {
-        sONOFF[ws['deviceid']]["conn"] = {};
-    }
-    // Store device's original apikey (for cloud connection)
-    sONOFF[ws['deviceid']]["conn"]['deviceApiKey'] = deviceFromFile?.apikey || receivedApiKey;
-    // Store proxyAPIKey (for local communication)
-    sONOFF[ws['deviceid']]["conn"]['apikey'] = proxyAPIKey;
-    sONOFF[ws['deviceid']]["conn"]['ws'] = ws;
-
     // Store registration string
-    sONOFF[ws['deviceid']]['registerSTR'] = ws['msg'];
-    sONOFF[ws['deviceid']]["state"] = 'off';
+    sONOFF[deviceID]['registerSTR'] = ws['msg'];
+
+    // Initialize switch state to OFF (will be updated by device's update message)
+    DeviceTracking.setSwitchState(deviceID, SwitchState.OFF);
 
     // Debug logging
-    debugLog(ws['deviceid'], 'DEVICE → PROXY', 'REGISTER REQUEST', ws['msg']);
+    LoggingService.debugLog(deviceID, 'PROXY → DEVICE', 'REGISTER RESPONSE', 
+        `Using localApiKey: ${proxyAPIKey.substring(0, 8)}...`);
 
     // Initiate cloud connection (optional, only if internet available)
-    console.log(`🌐 Connecting ${ws['deviceid']} "${sONOFF[ws['deviceid']].alias}" to cloud...`);
-    proxyEvent.emit('devConnEstablished', ws['deviceid']);
+    console.log(`🌐 Connecting ${deviceID} "${sONOFF[deviceID].alias}" to cloud...`);
+    proxyEvent.emit('devConnEstablished', deviceID);
 });
 
 // **DATE ACTION HANDLER**
@@ -354,42 +364,36 @@ handleMessage.on('date', (ws) => {
         return;
     }
     
-    // Ensure device object exists
-    if (!sONOFF[ws['deviceid']]) {
-        sONOFF[ws['deviceid']] = {
-            state: 'OFFLINE',
-            isOnline: false,
-            cloudConnected: false,
-            alias: 'new-' + ws['deviceid']
-        };
-    }
+    const deviceID = ws['deviceid'];
     
-    sONOFF[ws['deviceid']]['dateSTR'] = ws['msg'];
+    // Ensure device object exists
+    DeviceTracking.initDeviceObject(deviceID);
+    
+    // Store date request
+    sONOFF[deviceID]['dateSTR'] = ws['msg'];
     
     // Ensure stats exist and increment
-    initDeviceStats(ws['deviceid']);
-    deviceStats[ws['deviceid']].DATE_REQ++;
+    DeviceTracking.initStats(deviceID);
+    deviceStats[deviceID].DATE_REQ++;
     
-    // **Use cloud apikey if available, otherwise device's original apikey**
-    const responseApiKey = sONOFF[ws['deviceid']].conn?.cloudApiKey || 
-                           sONOFF[ws['deviceid']].conn?.apikey || 
-                           proxyAPIKey;  // Last resort fallback
+    // **FIXED: Use localApiKey consistently (no cloudApiKey references)**
+    const responseApiKey = sONOFF[deviceID].conn?.localApiKey || proxyAPIKey;
     
     // Build response
     const response = JSON.stringify({
         error: 0,
-        deviceid: ws['deviceid'],
+        deviceid: deviceID,
         apikey: responseApiKey,
         date: new Date().toISOString()
     });
     
     // Debug logging
-    debugLog(ws['deviceid'], 'DEVICE → PROXY', 'DATE REQUEST', ws['msg']);
-    debugLog(ws['deviceid'], 'PROXY → DEVICE', 'DATE RESPONSE', response);
+    LoggingService.debugLog(deviceID, 'DEVICE → PROXY', 'DATE REQUEST', ws['msg']);
+    LoggingService.debugLog(deviceID, 'PROXY → DEVICE', 'DATE RESPONSE', response);
     
     // Send response
     ws.send(response);
-    deviceStats[ws['deviceid']].DATE_RES++;
+    deviceStats[deviceID].DATE_RES++;
 });
 
 // **UPDATE ACTION HANDLER**
@@ -399,47 +403,41 @@ handleMessage.on('update', (ws) => {
         return;
     }
     
-    // Ensure device object exists
-    if (!sONOFF[ws['deviceid']]) {
-        sONOFF[ws['deviceid']] = {
-            state: 'OFFLINE',
-            isOnline: false,
-            cloudConnected: false,
-            alias: 'new-' + ws['deviceid']
-        };
-    }
+    const deviceID = ws['deviceid'];
     
-    sONOFF[ws['deviceid']]['updateSTR'] = ws['msg'];
+    // Ensure device object exists
+    DeviceTracking.initDeviceObject(deviceID);
+    
+    // Store update request
+    sONOFF[deviceID]['updateSTR'] = ws['msg'];
     
     // Ensure stats exist and increment
-    initDeviceStats(ws['deviceid']);
-    deviceStats[ws['deviceid']].UPDATE_REQ++;
+    DeviceTracking.initStats(deviceID);
+    deviceStats[deviceID].UPDATE_REQ++;
     
-    // Parse and update state
+    // Parse and update switch state
     let msgObj = JSON.parse(ws['msg']);
     if (msgObj['params'] && msgObj['params']['switch']) {
-        sONOFF[ws['deviceid']]['state'] = msgObj['params']['switch'];
+        DeviceTracking.setSwitchState(deviceID, msgObj['params']['switch']);
     }
     
-    // **Use cloud apikey if available, otherwise device's original apikey**
-    const responseApiKey = sONOFF[ws['deviceid']].conn?.cloudApiKey || 
-                           sONOFF[ws['deviceid']].conn?.apikey || 
-                           proxyAPIKey;  // Last resort fallback
+    // **FIXED: Use localApiKey consistently (no cloudApiKey references)**
+    const responseApiKey = sONOFF[deviceID].conn?.localApiKey || proxyAPIKey;
     
     // Build response
     const response = JSON.stringify({
         error: 0,
-        deviceid: ws['deviceid'],
+        deviceid: deviceID,
         apikey: responseApiKey
     });
     
     // Debug logging
-    debugLog(ws['deviceid'], 'DEVICE → PROXY', 'UPDATE REQUEST', ws['msg']);
-    debugLog(ws['deviceid'], 'PROXY → DEVICE', 'UPDATE ACK', response);
+    LoggingService.debugLog(deviceID, 'DEVICE → PROXY', 'UPDATE REQUEST', ws['msg']);
+    LoggingService.debugLog(deviceID, 'PROXY → DEVICE', 'UPDATE ACK', response);
     
     // Send response
     ws.send(response);
-    deviceStats[ws['deviceid']].UPDATE_ACK++;
+    deviceStats[deviceID].UPDATE_ACK++;
 });
 
 // **QUERY ACTION HANDLER**
@@ -449,28 +447,24 @@ handleMessage.on('query', (ws) => {
         return;
     }
     
-    // Ensure device object exists
-    if (!sONOFF[ws['deviceid']]) {
-        sONOFF[ws['deviceid']] = {
-            state: 'OFFLINE',
-            isOnline: false,
-            cloudConnected: false,
-            alias: 'new-' + ws['deviceid']
-        };
-    }
+    const deviceID = ws['deviceid'];
     
-    sONOFF[ws['deviceid']]['querySTR'] = ws['msg'];
+    // Ensure device object exists
+    DeviceTracking.initDeviceObject(deviceID);
+    
+    // Store query request
+    sONOFF[deviceID]['querySTR'] = ws['msg'];
     
     // Ensure stats exist and increment
-    initDeviceStats(ws['deviceid']);
-    deviceStats[ws['deviceid']].QUERY_REQ++;
+    DeviceTracking.initStats(deviceID);
+    deviceStats[deviceID].QUERY_REQ++;
     
     // Debug logging
-    debugLog(ws['deviceid'], 'DEVICE → PROXY', 'QUERY REQUEST', ws['msg']);
+    LoggingService.debugLog(deviceID, 'DEVICE → PROXY', 'QUERY REQUEST', ws['msg']);
     
     // Note: Query typically doesn't get a direct response from proxy
     // The cloud will respond, and we'll forward that response
-    deviceStats[ws['deviceid']].QUERY_RES++;
+    deviceStats[deviceID].QUERY_RES++;
 });
 
 // ============================================================================
@@ -480,14 +474,18 @@ handleMessage.on('query', (ws) => {
 // Event handler for when cloud connection is established
 proxyEvent.on('cloudConnectionEstablished', (deviceID) => {
     if (sONOFF[deviceID]) {
-        console.log(`✅ ${deviceID} "${sONOFF[deviceID].alias}" FULLY ONLINE (local + cloud)`);
+        console.log(`✅ ${deviceID} "${sONOFF[deviceID].alias}" cloud connection established`);
         
-        sONOFF[deviceID].cloudConnected = true;
-        sONOFF[deviceID].isOnline = true; // NOW the device is fully online
+        // Update cloud state to ONLINE
+        DeviceTracking.setCloudConnectionState(deviceID, ConnectionState.ONLINE);
         
-        // Update diagnostics
-        initDeviceDiagnostics(deviceID);
-        deviceDiagnostics[deviceID].lastOnlineTime = new Date().toISOString();
+        // If local is also REGISTERED or better, set local to ONLINE too
+        if (sONOFF[deviceID].localConnectionState === ConnectionState.REGISTERED) {
+            DeviceTracking.setLocalConnectionState(deviceID, ConnectionState.ONLINE);
+        }
+        
+        // The isOnline flag will be automatically updated by DeviceTracking
+        // when BOTH local and cloud are ONLINE
     }
 });
 
@@ -496,8 +494,11 @@ proxyEvent.on('cloudConnectionFailed', (deviceID, reason) => {
     if (sONOFF[deviceID]) {
         console.log(`❌ ${deviceID} "${sONOFF[deviceID].alias}" cloud connection failed: ${reason || 'Unknown'}`);
         
-        sONOFF[deviceID].cloudConnected = false;
-        sONOFF[deviceID].isOnline = false; // Not fully functional without cloud
+        // Update cloud state to OFFLINE
+        DeviceTracking.setCloudConnectionState(deviceID, ConnectionState.OFFLINE);
+        
+        // Note: Local connection might still be REGISTERED/ONLINE
+        // Device is not fully functional without cloud
     }
 });
 
@@ -506,15 +507,14 @@ proxyEvent.on('cloudConnectionClosed', (deviceID) => {
     if (sONOFF[deviceID]) {
         console.log(`🔌 ${deviceID} "${sONOFF[deviceID].alias}" cloud disconnected`);
         
-        sONOFF[deviceID].cloudConnected = false;
+        // Update cloud state to OFFLINE
+        DeviceTracking.setCloudConnectionState(deviceID, ConnectionState.OFFLINE);
         
-        // If local connection is also gone, device is offline
+        // If local connection is also gone, mark as fully offline
         if (!sONOFF[deviceID].conn || !sONOFF[deviceID].conn.ws) {
-            sONOFF[deviceID].isOnline = false;
-            sONOFF[deviceID].state = 'OFFLINE';
-        } else {
-            // Local connection exists but no cloud - mark as not fully online
-            sONOFF[deviceID].isOnline = false;
+            DeviceTracking.setLocalConnectionState(deviceID, ConnectionState.OFFLINE);
         }
+        
+        // The isOnline flag will be automatically updated by DeviceTracking
     }
 });

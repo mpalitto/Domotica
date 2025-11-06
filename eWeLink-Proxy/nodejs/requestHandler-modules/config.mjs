@@ -7,11 +7,11 @@ Configuration constants for the proxy server
 */
 
 export const WEBSOCKET_CONFIG = {
-    IDENTIFICATION_TIMEOUT: 120000, // 120 seconds
-    PING_TIMEOUT: 180000, // 180 seconds (devices ping every ~140s)
-    PING_CHECK_INTERVAL: 300000, // Check every 300 seconds
-    FIRST_MESSAGE_TIMEOUT: 300000, // 300 seconds
-    RECONNECTION_CHECK_DELAY: 5000, // 5 seconds
+    FIRST_MESSAGE_TIMEOUT: 30000,      // 30 seconds - MUST send any message
+    IDENTIFICATION_TIMEOUT: 120000,    // 120 seconds - MUST send register
+    PING_TIMEOUT: 180000,              // 180 seconds - devices ping every ~140s
+    PING_CHECK_INTERVAL: 60000,        // Check every 60 seconds (more responsive)
+    RECONNECTION_CHECK_DELAY: 5000,    // 5 seconds
 };
 
 export const DIAGNOSTIC_CONFIG = {

@@ -1,16 +1,18 @@
 /*
 Author: Matteo Palitto
-Date: January 9, 2024
+Date: January 9, 2024 (Updated)
 
 Description: cloudMessageHandler.mjs
 Handles incoming messages from cloud servers
+Integrated with three-state system
 */
 
-import { sONOFF, proxyEvent, deviceStats, deviceDiagnostics } from '../sharedVARs.js';
+import { sONOFF, proxyEvent, deviceStats, deviceDiagnostics, ConnectionState } from '../sharedVARs.js';
+import { DeviceTracking } from '../requestHandler-modules/deviceTracking.mjs';
 import { CloudLogger } from './cloudLogger.mjs';
 import { CloudRegistration } from './cloudRegistration.mjs';
 import { CloudHeartbeat } from './cloudHeartbeat.mjs';
-import { initDeviceStats, initDeviceDiagnostics } from '../requestHandler-modules/requestHandler.mjs';
+import { CLOUD_CONFIG } from './cloudConfig.mjs';
 
 export class CloudMessageHandler {
     /**
@@ -30,7 +32,7 @@ export class CloudMessageHandler {
         });
         
         // Increment cloud message counter
-        initDeviceStats(deviceID);
+        DeviceTracking.initStats(deviceID);
         if (!deviceStats[deviceID].CLOUD_MSG) {
             deviceStats[deviceID].CLOUD_MSG = 0;
         }
@@ -54,7 +56,7 @@ export class CloudMessageHandler {
                 return this.#handleUpdateCommand(deviceID, msgObj, message);
             }
             
-            // Handle query/heartbeat responses - SUPPRESS SPAM
+            // Handle query/heartbeat responses - CONFIGURABLE LOGGING
             if (msgObj.error === 0 && msgObj.sequence && typeof msgObj.params !== 'undefined' && !msgObj.action) {
                 return this.#handleHeartbeatResponse(deviceID, ws);
             }
@@ -101,6 +103,9 @@ export class CloudMessageHandler {
         // Clear registration timeout
         CloudRegistration.clearTimeout(deviceID);
         
+        // Update state to OFFLINE
+        DeviceTracking.setCloudConnectionState(deviceID, ConnectionState.OFFLINE);
+        
         // Emit failure event
         proxyEvent.emit('cloudConnectionFailed', deviceID, `Cloud error ${msgObj.error}: ${msgObj.reason || 'Unknown'}`);
         
@@ -127,23 +132,22 @@ export class CloudMessageHandler {
         console.log(`✅ CLOUD REGISTRATION SUCCESSFUL FOR DEVICE ${deviceID}`);
         console.log(`${'✅'.repeat(40)}\n`);
         
-        // Update the apikey with the one cloud gave us
+        // Get the cloud-provided apikey
         const cloudApiKey = msgObj.apikey;
+        const deviceApiKey = sONOFF[deviceID].conn?.deviceApiKey;
         
         // Store the cloud-provided apikey for future use
         if (sONOFF[deviceID] && sONOFF[deviceID].conn) {
-            const oldApiKey = sONOFF[deviceID].conn.apikey;
             sONOFF[deviceID].conn.cloudApiKey = cloudApiKey;
             
-            console.log(`   Device apikey: ${oldApiKey}`);
-            console.log(`   Cloud apikey:  ${cloudApiKey}`);
+            console.log(`   Device apikey: ${deviceApiKey?.substring(0, 8)}...`);
+            console.log(`   Cloud apikey:  ${cloudApiKey.substring(0, 8)}...`);
             
-            if (oldApiKey !== cloudApiKey) {
-                console.log(`   ⚠️  API keys differ - will use cloud apikey for cloud communication`);
+            if (deviceApiKey !== cloudApiKey) {
+                console.log(`   ℹ️  API keys differ - using cloud apikey for cloud communication`);
+            } else {
+                console.log(`   ✅ API keys match`);
             }
-            
-            // Mark cloud as connected
-            sONOFF[deviceID].cloudConnected = true;
         }
         
         if (msgObj.date) {
@@ -154,6 +158,9 @@ export class CloudMessageHandler {
             console.log(`   Heartbeat config: ${JSON.stringify(msgObj.config)}`);
         }
         
+        // **UPDATE CLOUD STATE TO ONLINE**
+        DeviceTracking.setCloudConnectionState(deviceID, ConnectionState.ONLINE);
+        
         // Start the application-level heartbeat timer
         CloudHeartbeat.start(deviceID, ws);
         
@@ -163,14 +170,14 @@ export class CloudMessageHandler {
         }
         
         // Update diagnostics
-        initDeviceDiagnostics(deviceID);
+        DeviceTracking.initDiagnostics(deviceID);
         deviceDiagnostics[deviceID].lastCloudConnectionTime = new Date().toISOString();
         
-        // Emit success event
+        // Emit success event (handled by messageHandler to update isOnline)
         console.log(`🎉 Emitting cloudConnectionEstablished event for device ${deviceID}`);
         proxyEvent.emit('cloudConnectionEstablished', deviceID);
         
-        console.log(`\n✅ Device ${deviceID} "${sONOFF[deviceID]?.alias || 'unknown'}" is now FULLY ONLINE (local + cloud)\n`);
+        console.log(`\n✅ Device ${deviceID} "${sONOFF[deviceID]?.alias || 'unknown'}" cloud is now ONLINE\n`);
     }
 
     /**
@@ -185,11 +192,12 @@ export class CloudMessageHandler {
         console.log(`🔄 Cloud command for device ${deviceID} - forwarding to device`);
         console.log(`   Command: ${JSON.stringify(msgObj.params)}`);
         
+        // Forward to device via event
         proxyEvent.emit('messageFromCloud', deviceID, message);
     }
 
     /**
-     * Handle heartbeat response (suppress spam)
+     * Handle heartbeat response (configurable logging)
      */
     static #handleHeartbeatResponse(deviceID, ws) {
         CloudLogger.log('💓 Cloud heartbeat response', {
@@ -200,10 +208,19 @@ export class CloudMessageHandler {
         if (!ws.heartbeatCount) ws.heartbeatCount = 0;
         ws.heartbeatCount++;
         
-        // Only log every 100th heartbeat
-        if (ws.heartbeatCount === 1 || ws.heartbeatCount % 100 === 0) {
-            console.log(`💓 Cloud heartbeat OK for ${deviceID} "${sONOFF[deviceID]?.alias || 'unknown'}" (count: ${ws.heartbeatCount})`);
+        // Configurable logging based on CLOUD_CONFIG
+        const showInterval = CLOUD_CONFIG.SHOW_HEARTBEAT_EVERY;
+        
+        if (showInterval === 1) {
+            // Show every heartbeat
+            console.log(`💓 Cloud heartbeat OK for ${deviceID} "${sONOFF[deviceID]?.alias || 'unknown'}" (#${ws.heartbeatCount})`);
+        } else if (showInterval > 1) {
+            // Show every Nth heartbeat
+            if (ws.heartbeatCount === 1 || ws.heartbeatCount % showInterval === 0) {
+                console.log(`💓 Cloud heartbeat OK for ${deviceID} "${sONOFF[deviceID]?.alias || 'unknown'}" (count: ${ws.heartbeatCount})`);
+            }
         }
+        // If showInterval === 0, don't log at all (completely silent)
     }
 
     /**
