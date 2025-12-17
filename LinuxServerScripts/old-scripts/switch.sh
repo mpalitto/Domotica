@@ -54,14 +54,14 @@ done
 # command for sending data through the Arduino: screen -S arduino433tx -X stuff "s:B1E461"
           #screen -S arduino433tx -X stuff "s:${sONOFF[]}"
 
-echo -n > $IoTserverScripts/.lastSwitch
-tail -n0 -f $IoTserverScripts/tmp | while read line; do 
+echo -n > $IoTserverScripts/tmp-files/.lastSwitch
+tail -n0 -f $IoTserverScripts/tmp-files/buttonPress.log | while read line; do 
   #echo $line
   #Switch="${lastSwitch:1:5}${lastSwitch:9}"
   SWcode="${line:9:5}${line:17:1}"
   selection=""
-  if [ "${line:0:6}" == "0A1400" ] && [ ! "$(grep $SWcode $IoTserverScripts/.lastSwitch)" ]; then
-     echo "$SWcode" >> $IoTserverScripts/.lastSwitch; (sleep 2 && grep -v $SWcode $IoTserverScripts/.lastSwitch > $IoTserverScripts/.lastSwitch.tmp; mv $IoTserverScripts/.lastSwitch.tmp $IoTserverScripts/.lastSwitch) &
+  if [ "${line:0:6}" == "0A1400" ] && [ ! "$(grep $SWcode $IoTserverScripts/tmp-files/.lastSwitch)" ]; then
+     echo "$SWcode" >> $IoTserverScripts/tmp-files/.lastSwitch; (sleep 2 && grep -v $SWcode $IoTserverScripts/tmp-files/.lastSwitch > $IoTserverScripts/tmp-files/.lastSwitch.tmp; mv $IoTserverScripts/tmp-files/.lastSwitch.tmp $IoTserverScripts/tmp-files/.lastSwitch) &
 
     SWC=${SWcode:0:5}
     SWN=${Switch[${SWcode:0:5}]}

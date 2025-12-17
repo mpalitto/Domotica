@@ -10,19 +10,20 @@
 # N.B. dovrebbe essere usato startCurrentAlarm.sh per avviarlo
 # N.B. dovrebbe essere avviato una volta al giorno as crontab job
 
-# make sure we are using the node.js environment so that 
-# the command "node" can be found
-. /root/.nvm/nvm.sh  
+PORT=12345
 
 function toggleAlarm { 
   screen -S arduino433tx -X stuff "s:5EAAC1" 
   echo Alarm $1
 }
+
 alarm="off"
 c=0
+
 #logfn e il log file name, la variabile viene definita nella shell
 #con il comando: export logfn="$IoTserverScripts/.current_$(date +%d-$m-%Y).log"
 logfn="$IoTserverScripts/.current_$(date +%d-%m-%Y).log"
+
 #se il file logfn.0 esiste gia vuol dire che ce stata almeno una interruzione
 #e quindi rinominiamo il file in modo che se esiste logfn.N, allora fn sara 
 #logfn.N+1
@@ -41,11 +42,16 @@ else triggerON=333
 fi
 let triggerOFF=triggerON-10
 
+echo "TCP server listening on port $PORT (trigger ON=$triggerON OFF=$triggerOFF)"
+
 #questo e il loop principale che implementa la logica
-node $IoTserverScripts/currentSocketServer.js | while read line
+while read line
 do 
+   # Skip empty lines
+   [ -z "$line" ] && continue
+   
    p=$c
-   c=${line//* /} 
+   c=${line//* /}
    echo "$(date +%H:%M:%S) p=$p c=$c"
    screen -S displayServer -X stuff "$c\n" # invia la misura della corrente al display
    if [ $alarm = "off" ]; then
@@ -59,4 +65,4 @@ do
           toggleAlarm off
         fi
    fi 
-done | tee $fn
+done < <(socat TCP4-LISTEN:$PORT,reuseaddr,fork STDOUT 2>/dev/null | while IFS= read -r -d ':' chunk; do echo -n "$chunk" | sed 's/nodeMCU-currentSensor/\nnodeMCU-currentSensor/g'; done) | tee $fn

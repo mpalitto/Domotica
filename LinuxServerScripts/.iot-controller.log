@@ -141,3 +141,247 @@ Parsed areas: [ 'SALA/CUCINA', 'PADRONALE', 'NICOLO', 'LAVANDERIA', 'BILOCALE' ]
 Configuration loaded successfully
 IoT House Controller running on http://192.168.1.77:3000
 Map configuration file: /root/Domotica/LinuxServerScripts/iot-controller/map-conf.json
+Light command sent: s:5EA151
+Light command sent: s:5EA151
+Loading configuration from /root/Domotica/LinuxServerScripts
+Parsed areas: [ 'SALA/CUCINA', 'PADRONALE', 'NICOLO', 'LAVANDERIA', 'BILOCALE' ]
+  SALA/CUCINA: 10 lights
+  PADRONALE: 7 lights
+  NICOLO: 2 lights
+  LAVANDERIA: 1 lights
+  BILOCALE: 6 lights
+Configuration loaded successfully
+IoT House Controller running on http://192.168.1.77:3000
+Map configuration file: /root/Domotica/LinuxServerScripts/iot-controller/map-conf.json
+Loading configuration from /root/Domotica/LinuxServerScripts
+Parsed areas: [ 'SALA/CUCINA', 'PADRONALE', 'NICOLO', 'LAVANDERIA', 'BILOCALE' ]
+  SALA/CUCINA: 10 lights
+  PADRONALE: 7 lights
+  NICOLO: 2 lights
+  LAVANDERIA: 1 lights
+  BILOCALE: 6 lights
+Configuration loaded successfully
+IoT House Controller running on http://192.168.1.77:3000
+Map configuration file: /root/Domotica/LinuxServerScripts/iot-controller/map-conf.json
+Loading configuration from /root/Domotica/LinuxServerScripts
+Parsed areas: [ 'SALA/CUCINA', 'PADRONALE', 'NICOLO', 'LAVANDERIA', 'BILOCALE' ]
+  SALA/CUCINA: 10 lights
+  PADRONALE: 7 lights
+  NICOLO: 2 lights
+  LAVANDERIA: 1 lights
+  BILOCALE: 6 lights
+Configuration loaded successfully
+IoT House Controller running on http://192.168.1.77:3000
+Map configuration file: /root/Domotica/LinuxServerScripts/iot-controller/map-conf.json
+Light command sent: s:5EAC01
+Light command sent: s:5EA151
+Light command sent: s:5EA151
+Light command sent: s:5EA151
+Light command sent: s:5EA151
+Light command sent: s:5EA151
+Light command sent: s:5EAA51
+Light command sent: s:5EA1A1
+Light command sent: s:C001B1
+Light command sent: s:5EA151
+Light command sent: s:C001B1
+Light command sent: s:C001C1
+Light command sent: s:0A55C1
+Light command sent: s:C001B1
+Light command sent: s:5EA1A1
+Light command sent: s:DADBC1
+Light command sent: s:5EA151
+Light command sent: s:5EA151
+Light command sent: s:5EA151
+Light command sent: s:5EA1A1
+Light command sent: s:5EA151
+Light command sent: s:5EA1A1
+Light command sent: s:5EA151
+Light command sent: s:DADCC1
+Light command sent: s:5EA151
+Light command sent: s:5EA751
+Light command sent: s:5EA751
+Light command sent: s:5EA751
+Light command sent: s:5EA751
+Light command sent: s:5EA751
+Light command sent: s:5EA751
+Light command sent: s:5EA751
+Light command sent: s:5EA751
+Light command sent: s:5EA751
+Light command sent: s:5EA751
+Light command sent: s:5EA751
+Light command sent: s:5EA751
+Light command sent: s:5EA751
+Light command sent: s:5EA751
+Light command sent: s:5EA751
+Light command sent: s:5EA751
+Light command sent: s:5EA751
+Light command sent: s:5EA751
+Light command sent: s:5EA751
+Light command sent: s:5EA151
+Light command sent: s:0A55C1
+Loading configuration from /root/Domotica/LinuxServerScripts
+Parsed areas: [ 'SALA/CUCINA', 'PADRONALE', 'NICOLO', 'LAVANDERIA', 'BILOCALE' ]
+  SALA/CUCINA: 10 lights
+  PADRONALE: 7 lights
+  NICOLO: 2 lights
+  LAVANDERIA: 1 lights
+  BILOCALE: 6 lights
+Configuration loaded successfully
+IoT House Controller running on http://192.168.1.77:3000
+Map configuration file: /root/Domotica/LinuxServerScripts/iot-controller/map-conf.json
+Light command sent: s:5EA1A1
+Light command sent: s:5EA1A1
+Light command sent: s:5EA1A1
+Light command sent: s:0A55C1
+Light command sent: s:5EA151
+Light command sent: s:5EA151
+Light command sent: s:C001C1
+Light command sent: s:C001C1
+Light command sent: s:C001C1
+Light command sent: s:C001C1
+Light command sent: s:C001C1
+Light command sent: s:C001C1
+Light command sent: s:C001C1
+Light command sent: s:C001C1
+Light command sent: s:C001B1
+Light command sent: s:C001B1
+Light command sent: s:C001C1
+Light command sent: s:C001B1
+Light command sent: s:C001C1
+Light command sent: s:C001C1
+Light command sent: s:C001C1
+Light command sent: s:C001C1
+Light command sent: s:C001B1
+Light command sent: s:C001B1
+Light command sent: s:C001B1
+Light command sent: s:C001B1
+Light command sent: s:C001C1
+Light command sent: s:5EA151
+Light command sent: s:C001C1
+Light command sent: s:5EA751
+Light command sent: s:5EA151
+Light command sent: s:5EA751
+Light command sent: s:5EA751
+Light command sent: s:5EA751
+Light command sent: s:5EA751
+Light command sent: s:5EA751
+Light command sent: s:5EA151
+Light command sent: s:5EA151
+Light command sent: s:5EA151
+Light command sent: s:C001B1
+Light command sent: s:C001B1
+Loading configuration from /root/Domotica/LinuxServerScripts
+Parsed areas: [ 'SALA/CUCINA', 'PADRONALE', 'NICOLO', 'LAVANDERIA', 'BILOCALE' ]
+  SALA/CUCINA: 10 lights
+  PADRONALE: 7 lights
+  NICOLO: 2 lights
+  LAVANDERIA: 1 lights
+  BILOCALE: 6 lights
+Configuration loaded successfully
+IoT House Controller running on http://192.168.1.77:3000
+Map configuration file: /root/Domotica/LinuxServerScripts/iot-controller/map-conf.json
+Light command sent: s:5EA151
+Light command sent: s:5EA151
+Light command sent: s:5EA151
+Light command sent: s:5EA151
+Light command sent: s:5EA151
+Light command sent: s:5EA151
+Light command sent: s:5EA151
+Light command sent: s:5EA151
+Light command sent: s:5EA151
+Light command sent: s:5EA151
+Light command sent: s:5EA751
+Light command sent: s:5EA1A1
+Light command sent: s:5EA151
+Light command sent: s:5EA151
+Light command sent: s:5EA1A1
+Light command sent: s:5EA751
+Light command sent: s:5EA151
+Light command sent: s:5EA151
+Light command sent: s:5EA751
+Light command sent: s:DADBC1
+Loading configuration from /root/Domotica/LinuxServerScripts
+Parsed areas: [ 'SALA/CUCINA', 'PADRONALE', 'NICOLO', 'LAVANDERIA', 'BILOCALE' ]
+  SALA/CUCINA: 10 lights
+  PADRONALE: 7 lights
+  NICOLO: 2 lights
+  LAVANDERIA: 1 lights
+  BILOCALE: 6 lights
+Configuration loaded successfully
+IoT House Controller running on http://192.168.1.77:3000
+Map configuration file: /root/Domotica/LinuxServerScripts/iot-controller/map-conf.json
+Light command sent: s:DADBC1
+Light command sent: s:DADBC1
+Light command sent: s:C001B1
+Light command sent: s:C001C1
+Light command sent: s:C001B1
+Light command sent: s:C001B1
+Light command sent: s:C001B1
+Light command sent: s:DADBC1
+Light command sent: s:5EA151
+Light command sent: s:C001B1
+Light command sent: s:5EA151
+Light command sent: s:5EA751
+Loading configuration from /root/Domotica/LinuxServerScripts
+Parsed areas: [ 'SALA/CUCINA', 'PADRONALE', 'NICOLO', 'LAVANDERIA', 'BILOCALE' ]
+  SALA/CUCINA: 10 lights
+  PADRONALE: 7 lights
+  NICOLO: 2 lights
+  LAVANDERIA: 1 lights
+  BILOCALE: 6 lights
+Configuration loaded successfully
+IoT House Controller running on http://192.168.1.77:3000
+Map configuration file: /root/Domotica/LinuxServerScripts/iot-controller/map-conf.json
+Light command sent: s:C001B1
+Light command sent: s:C001B1
+Light command sent: s:C001B1
+Light command sent: s:C001C1
+Loading configuration from /root/Domotica/LinuxServerScripts
+Parsed areas: [ 'SALA/CUCINA', 'PADRONALE', 'NICOLO', 'LAVANDERIA', 'BILOCALE' ]
+  SALA/CUCINA: 10 lights
+  PADRONALE: 7 lights
+  NICOLO: 2 lights
+  LAVANDERIA: 1 lights
+  BILOCALE: 6 lights
+Configuration loaded successfully
+IoT House Controller running on http://192.168.1.77:3000
+Map configuration file: /root/Domotica/LinuxServerScripts/iot-controller/map-conf.json
+Loading configuration from /root/Domotica/LinuxServerScripts
+Parsed areas: [ 'SALA/CUCINA', 'PADRONALE', 'NICOLO', 'LAVANDERIA', 'BILOCALE' ]
+  SALA/CUCINA: 10 lights
+  PADRONALE: 7 lights
+  NICOLO: 2 lights
+  LAVANDERIA: 1 lights
+  BILOCALE: 6 lights
+Configuration loaded successfully
+IoT House Controller running on http://192.168.1.77:3000
+Map configuration file: /root/Domotica/LinuxServerScripts/iot-controller/map-conf.json
+Loading configuration from /root/Domotica/LinuxServerScripts
+Parsed areas: [ 'SALA/CUCINA', 'PADRONALE', 'NICOLO', 'LAVANDERIA', 'BILOCALE' ]
+  SALA/CUCINA: 10 lights
+  PADRONALE: 7 lights
+  NICOLO: 2 lights
+  LAVANDERIA: 1 lights
+  BILOCALE: 6 lights
+Configuration loaded successfully
+IoT House Controller running on http://192.168.1.77:3000
+Map configuration file: /root/Domotica/LinuxServerScripts/iot-controller/map-conf.json
+Light command sent: s:C001B1
+Light command sent: s:C001B1
+Light command sent: s:C001B1
+Loading configuration from /root/Domotica/LinuxServerScripts
+Parsed areas: [ 'SALA/CUCINA', 'PADRONALE', 'NICOLO', 'LAVANDERIA', 'BILOCALE' ]
+  SALA/CUCINA: 10 lights
+  PADRONALE: 7 lights
+  NICOLO: 2 lights
+  LAVANDERIA: 1 lights
+  BILOCALE: 6 lights
+Configuration loaded successfully
+IoT House Controller running on http://192.168.1.77:3000
+Map configuration file: /root/Domotica/LinuxServerScripts/iot-controller/map-conf.json
+Loading configuration from /root/Domotica/LinuxServerScripts
+Configuration loaded successfully
+IoT House Controller running on http://192.168.1.77:3000
+Map configuration file: /root/Domotica/LinuxServerScripts/iot-controller/map-conf.json
+Light command sent: s:5EA151
+Light command sent: s:5EA151

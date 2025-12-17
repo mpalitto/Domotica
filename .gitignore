@@ -2,7 +2,10 @@
 LinuxServerScripts/.*.log*
 
 # Ignore temporary file
-LinuxServerScripts/tmp/
+LinuxServerScripts/tmp-files
+
+# Ignore secrets files
+LinuxServerScripts/cert.*
 
 # Windows image file caches
 Thumbs.db
