@@ -1,0 +1,11 @@
+# Put your custom commands here that should be executed once
+# the system init finished. By default this file (/etc/rc.local) does nothing.
+
+wifi-live-or-reset
+
+#start connection with lubuntu server
+#however this command should be run when connection to LAN would be available... to FIX
+#it is only meant to start a persistent connection for a faster response when a switch is pressed
+ssh -M -o "ControlPersist=yes" 192.168.1.76 ls
+
+exit 0

@@ -1,0 +1,183 @@
+/*
+Author: Matteo Palitto
+Date: January 9, 2024
+
+Description: httpHandler.mjs
+Handles HTTP/HTTPS requests including dispatch requests
+*/
+
+import { PROXY_PORT, PROXY_IP, dispatch, sONOFF, protocolCapture, LOGS_DIR, ConnectionState, SwitchState } from '../sharedVARs.js';
+import { DeviceTracking } from './deviceTracking.mjs';
+import { DeviceIdentification } from './deviceIdentification.mjs';
+import { LoggingService } from './loggingService.mjs';
+import { LOGGING_CONFIG } from './config.mjs';
+import { updateDeviceInCmdFile, getDeviceFromCmdFile } from '../cmd-modules/cmdFileManager.mjs';
+
+export class HttpHandler {
+    /**
+     * Main HTTP request handler
+     */
+    static handleHttpRequest(req, res) {
+        const clientIP = req.connection.remoteAddress;
+        
+        console.log(`📥 HTTP ${req.method} ${req.url} from ${clientIP}`);
+
+        if (LOGGING_CONFIG.VERBOSE) {
+            console.log('HTTPS request received:', req.method, req.url, 'from:', clientIP);
+        }
+
+        // Checking if the request is a POST request to '/dispatch/device'
+        if (req.method === 'POST' && req.url === '/dispatch/device') {
+            this.#handleDispatchRequest(req, res, true);
+        } else {
+            res.statusCode = 404;
+            res.end('HTTPS request processed');
+        }
+    }
+
+    /**
+     * Handle dispatch request from device
+     */
+    static #handleDispatchRequest(req, res, secure) {
+        let bodyChunks = [];
+        let msg = '';
+        let deviceID = '';
+        const clientIP = req.connection.remoteAddress.replace('::ffff:', '');
+
+        req.on('error', (err) => {
+            console.error('❌ Dispatch request error:', err);
+            if (deviceID) {
+                DeviceTracking.logConnectionAttempt(deviceID, clientIP, 'DISPATCH', false, err.message);
+            }
+        })
+        .on('data', (chunk) => bodyChunks.push(chunk))
+        .on('end', async () => {
+            try {
+                // Parse the received JSON message
+                msg = Buffer.concat(bodyChunks).toString();
+                const device = JSON.parse(msg);
+                
+                // Validate required fields
+                if (!device.deviceid) {
+                    throw new Error('Missing required field: deviceid');
+                }
+                
+                deviceID = device.deviceid;
+                
+                // Validate device ID format
+                if (!DeviceIdentification.isValidDeviceID(deviceID)) {
+                    throw new Error(`Invalid deviceID format: ${deviceID}`);
+                }
+
+                // Check for protocol capture
+                if (protocolCapture.enabled && clientIP === protocolCapture.ip) {
+                    console.log(`*** CAPTURE MODE: Matched IP ${clientIP} to deviceID ${deviceID} ***`);
+                    protocolCapture.deviceId = deviceID;
+                    protocolCapture.logFile = `${LOGS_DIR}/${deviceID}.log`;
+                    LoggingService.captureLog('DEVICE -> PROXY (HTTP DISPATCH)', msg);
+                }
+                
+                // Initialize stats and diagnostics for this device
+                DeviceTracking.initStats(deviceID);
+                DeviceTracking.initDiagnostics(deviceID);
+                
+                // Update diagnostics
+                const now = new Date();
+                const deviceDiagnostics = await import('../sharedVARs.js').then(m => m.deviceDiagnostics);
+                deviceDiagnostics[deviceID].lastDispatchTime = now.toISOString();
+                deviceDiagnostics[deviceID].lastDispatchIP = clientIP;
+                
+                // Get MAC address asynchronously
+                const macAddress = await DeviceIdentification.getMACfromIP(clientIP);
+                if (macAddress) {
+                    deviceDiagnostics[deviceID].lastDispatchMAC = macAddress;
+                }
+                
+                // Check if device is unknown and add to cmd file
+                const deviceFromFile = getDeviceFromCmdFile(deviceID);
+                const alias = deviceFromFile?.alias || `new-${deviceID}`;
+
+                // Extract apikey from dispatch message
+                const deviceApiKey = device.apikey || null;
+
+                if (!deviceFromFile) {
+                    console.log(`🆕 NEW device: ${deviceID} (${clientIP}, MAC: ${macAddress || 'unknown'})`);
+                    updateDeviceInCmdFile(deviceID, `new-${deviceID}`, macAddress, clientIP, deviceApiKey);
+                    
+                    // Initialize device object with DISPATCH state
+                    DeviceTracking.initDeviceObject(deviceID, `new-${deviceID}`);
+                    DeviceTracking.setLocalConnectionState(deviceID, ConnectionState.DISPATCH);
+                    
+                } else {
+                    console.log(`📡 Dispatch from ${deviceID} "${alias}" (${clientIP})`);
+                    updateDeviceInCmdFile(deviceID, deviceFromFile.alias, macAddress, clientIP, deviceApiKey);
+                    
+                    // Update to DISPATCH state (might be reconnecting)
+                    DeviceTracking.initDeviceObject(deviceID, alias);
+                    DeviceTracking.setLocalConnectionState(deviceID, ConnectionState.DISPATCH);
+                }
+                
+                // Log connection attempt
+                DeviceTracking.logConnectionAttempt(deviceID, clientIP, 'DISPATCH', true);
+                
+                // Increment DISPATCH request counter
+                const deviceStats = await import('../sharedVARs.js').then(m => m.deviceStats);
+                deviceStats[deviceID].DISPATCH_REQ++;
+                
+                // Debug logging
+                LoggingService.debugLog(deviceID, 'DEVICE → PROXY', 'DISPATCH REQUEST', 
+                    `From IP: ${clientIP}\nMAC: ${macAddress || 'Unknown'}\n${msg}`);
+                
+                // Store dispatch information
+                dispatch[deviceID] = msg;
+                
+                // Create response object
+                const response = JSON.stringify({
+                    port: Number(PROXY_PORT),
+                    reason: "ok",
+                    IP: PROXY_IP,
+                    error: 0
+                });
+                
+                // Send reply to the client
+                this.#sendReply(res, deviceID, clientIP, response);
+                
+            } catch (error) {
+                console.error('❌ Error parsing/validating dispatch request:', error.message);
+                DeviceTracking.logConnectionAttempt(deviceID || 'unknown', clientIP, 'DISPATCH', false, error.message);
+                res.statusCode = 400;
+                res.end(JSON.stringify({ error: error.message }));
+            }
+        });
+    }
+
+    /**
+     * Send reply to dispatch request
+     */
+    static #sendReply(res, deviceID, clientIP, response) {
+        const reply = {
+            'server': 'openresty',
+            'date': new Date().toUTCString(),
+            'Content-Type': 'application/json',
+            'content-length': Buffer.byteLength(response, 'utf8'),
+            'connection': 'keep-alive',
+        };
+        
+        // Increment DISPATCH response counter
+        import('../sharedVARs.js').then(({ deviceStats }) => {
+            deviceStats[deviceID].DISPATCH_RES++;
+        });
+        
+        // Debug logging
+        LoggingService.debugLog(deviceID, 'PROXY → DEVICE', 'DISPATCH RESPONSE', 
+            `To IP: ${clientIP}\n${response}`);
+        
+        // Log dispatch response if capture is enabled
+        if (protocolCapture.enabled && deviceID === protocolCapture.deviceId) {
+            LoggingService.captureLog('PROXY -> DEVICE (HTTP RESPONSE)', response);
+        }
+        
+        res.writeHead(200, 'OK', reply);
+        res.end(response, 'utf8');
+    }
+}

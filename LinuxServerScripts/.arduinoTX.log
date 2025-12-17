@@ -9,6 +9,7 @@ starting SCREEN - Sat Oct 11 23:04:46 CEST 2025
 starting SCREEN - Sat Oct 11 23:23:39 CEST 2025
 starting SCREEN - Sat Oct 11 23:37:39 CEST 2025
 Arduino found - Sat Oct 11 11:42:53 PM CEST 2025
+<<<<<<< HEAD
 starting SCREEN - Sat Oct 11 11:46:55 PM CEST 2025
 Arduino found - Sun Oct 12 12:14:16 AM CEST 2025
 starting SCREEN - Sun Oct 12 12:14:09 AM CEST 2025
@@ -26,3 +27,7 @@ starting SCREEN - Mon Dec 15 09:01:04 PM CET 2025
 starting SCREEN - Tue Dec 16 01:15:17 PM CET 2025
 starting SCREEN - Tue Dec 16 08:00:24 PM CET 2025
 starting SCREEN - Wed Dec 17 09:29:36 PM CET 2025
+=======
+Arduino found - Sat Oct 11 11:45:56 PM CEST 2025
+Arduino found - Sun Oct 12 12:00:50 PM CEST 2025
+>>>>>>> a67148debc49f077eb27b27e6795afab769721ed

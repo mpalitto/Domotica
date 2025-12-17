@@ -2,127 +2,369 @@
 Author: Matteo Palitto
 Date: January 9, 2024
 Description: sONOFFserver.mjs
+Main server file with three-state system integration
 */
- 
-// This code constructs a server tailored for the sONOFF devices, 
-// replicating the functionality of the eWeLink Cloud server it aims to supplant. 
-// The sONOFF devices operate unaware of their disconnection from the original Cloud server, 
-// eliminating the need for firmware updates that other solution require.
-// This solution facilitates local management of the sONOFF switches, enabling direct command transmission 
-// without relying on the Cloud Server or the eWeLink phone APP.
 
-// This Local Server operates independently or in tandem with the Cloud Proxy module. 
-// When used alongside the Cloud Proxy, it ensures continuous connectivity to the Cloud eWeLink Server and APP, 
-// provided an internet connection is available.
-
-// The code establishes an HTTPS server integrated with SSL/TLS configuration, manages incoming HTTPS requests, 
-// and initializes a WebSocket server to handle connections specifically with the sONOFF devices.
-
-// It exports an object named sONOFFserver containing functions responsible for relaying messages to the devices 
-// and monitoring their online status via WebSocket connections.
-
-// This code facilitates seamless communication with the devices, dynamically updating their status based on incoming messages, 
-// and implements mechanisms to monitor device activity, ensuring their online presence through WebSocket timeouts.
-
-// Prerequisites:
-// 1. Each sONOFF device must be pre-configured to connect to the cloud server.
-// 2. Each sONOFF device should be linked to an access point, 
-//    allowing the redirection of packets originating from the WiFi interface to a designated local IP address and port. 
-//    This code will listen for these redirected packets at that specific IP address and port.
-
-// When a sONOFF device is powered on it starts a 4 phases registration process:
-
-// 1. DISPATCH
-// 2. WEBSOCKET
-// 3. REGISTRATION
-// 4. COMMANDS
-
-// PHASE 1: DISPATCH sONOFF send a POST HTTPS request to eu-disp.coolkit.cc 
-//          from which receives the IP and PORT for the WebSocket (WS) server.
-
-// PHASE 2: Establish WS connection according to the websocket standard.
-
-// PHASE 3: REGISTRATION Once the WS is established, a sequence of WS messages are exchanged to register the sONOFF device 
-//          with the server (see above link for details)
-
-// PHASE 4: COMMANDS in this state the sONOFF device is waiting for commands from server, and sending periodic state updates.
-
-
-// imports from thrid party libraries
+// imports from third party libraries
 import { createServer } from 'https';
-import { readFileSync } from 'fs';
+import { readFileSync, appendFileSync } from 'fs';
 import { WebSocketServer } from 'ws';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 
 // imports from sub-modules
-import { handleHttpRequest, handleWebSocketConnection } from './requestHandler.mjs';
-import { sONOFF, reAPIkey, proxyAPIKey } from './sharedVARs.js';
+import { handleHttpRequest, handleWebSocketConnection } from './requestHandler-modules/requestHandler.mjs';
+import { PROXY_IP, PROXY_PORT, TLS_KEY_PATH, TLS_CERT_PATH, sONOFF, reAPIkey, proxyAPIKey, protocolCapture, ConnectionState } from './sharedVARs.js';
+import { DeviceTracking } from './requestHandler-modules/deviceTracking.mjs';
+
+const execPromise = promisify(exec);
 
 // Disabling TLS rejection for testing purposes
 process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
 
-// SSL/TLS configuration
-const options = {
-  secureProtocol: "TLS_method",
-  ciphers: "DEFAULT:@SECLEVEL=0",
-  key: readFileSync('/root/WS/tls/matteo-key.pem'),
-  cert: readFileSync('/root/WS/tls/matteo-cert.pem'),
-};
-
-// Create HTTPS server
-const server = createServer(options);
-// Handling HTTPS requests
-server.on('request', handleHttpRequest);
-
-// Web Socket Server
-const wss = new WebSocketServer({ server });
-function heartbeat() {
-  this.isAlive = true;
+// **Startup validation**
+function validateConfiguration() {
+    console.log('\n' + '🔍'.repeat(40));
+    console.log('Validating configuration...');
+    console.log('🔍'.repeat(40));
+    
+    // Validate proxyAPIKey
+    if (!proxyAPIKey || proxyAPIKey.length < 30) {
+        console.error('\n❌ FATAL ERROR: proxyAPIKey not configured or too short!');
+        console.error('   proxyAPIKey must be a valid UUID (36 characters)');
+        console.error('   Current value:', proxyAPIKey || 'undefined');
+        process.exit(1);
+    }
+    console.log(`✅ proxyAPIKey configured: ${proxyAPIKey.substring(0, 8)}...`);
+    
+    // Validate network configuration
+    if (!PROXY_IP) {
+        console.error('❌ FATAL ERROR: PROXY_IP not configured!');
+        process.exit(1);
+    }
+    console.log(`✅ PROXY_IP: ${PROXY_IP}`);
+    
+    if (!PROXY_PORT || PROXY_PORT < 1 || PROXY_PORT > 65535) {
+        console.error('❌ FATAL ERROR: Invalid PROXY_PORT!');
+        process.exit(1);
+    }
+    console.log(`✅ PROXY_PORT: ${PROXY_PORT}`);
+    
+    // Validate TLS files exist
+    try {
+        readFileSync(TLS_KEY_PATH);
+        console.log(`✅ TLS Key found: ${TLS_KEY_PATH}`);
+    } catch (err) {
+        console.error(`❌ FATAL ERROR: TLS key file not found: ${TLS_KEY_PATH}`);
+        process.exit(1);
+    }
+    
+    try {
+        readFileSync(TLS_CERT_PATH);
+        console.log(`✅ TLS Cert found: ${TLS_CERT_PATH}`);
+    } catch (err) {
+        console.error(`❌ FATAL ERROR: TLS cert file not found: ${TLS_CERT_PATH}`);
+        process.exit(1);
+    }
+    
+    console.log('🔍'.repeat(40) + '\n');
 }
 
-// Handling WebSocket connections
-wss.on('connection', (ws, req) => handleWebSocketConnection(ws, req));
+// **Startup cleanup function**
+async function cleanupOldConnections() {
+    console.log('\n' + '='.repeat(80));
+    console.log('🧹 STARTUP CLEANUP - Clearing stale connections');
+    console.log('='.repeat(80));
+    
+    try {
+        // 1. Check if port is already in use
+        console.log(`Checking if port ${PROXY_PORT} is already in use...`);
+        const { stdout: netstatOutput } = await execPromise(`ss -tlnp | grep :${PROXY_PORT} || true`);
+        
+        if (netstatOutput.trim()) {
+            console.log('⚠️  Port is already in use:');
+            console.log(netstatOutput);
+            
+            // Try to find and kill the process
+            const pidMatch = netstatOutput.match(/pid=(\d+)/);
+            if (pidMatch) {
+                const pid = pidMatch[1];
+                console.log(`Found process ${pid} using port ${PROXY_PORT}`);
+                console.log('Attempting to kill old process...');
+                
+                try {
+                    await execPromise(`kill ${pid}`);
+                    console.log('✅ Old process killed');
+                    // Wait a bit for the port to be released
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                } catch (err) {
+                    console.log('⚠️  Could not kill process:', err.message);
+                    console.log('You may need to run: sudo kill', pid);
+                }
+            }
+        } else {
+            console.log('✅ Port is free');
+        }
+        
+        // 2. Clean up any existing connections to our IP:PORT
+        console.log(`\nCleaning up existing connections to ${PROXY_IP}:${PROXY_PORT}...`);
+        const { stdout: connOutput } = await execPromise(`ss -tn | grep ${PROXY_IP}:${PROXY_PORT} || true`);
+        
+        if (connOutput.trim()) {
+            const connections = connOutput.trim().split('\n');
+            console.log(`Found ${connections.length} existing connection(s):`);
+            connections.forEach((conn, idx) => {
+                console.log(`  [${idx + 1}] ${conn}`);
+            });
+            
+            console.log('These connections will be closed when devices detect the disconnect');
+            console.log('Devices should reconnect within 30-60 seconds');
+        } else {
+            console.log('✅ No existing connections found');
+        }
+        
+        // 3. Optional: Force TCP RST for immediate cleanup (requires sudo)
+        console.log('\nChecking for tcpkill availability (optional)...');
+        try {
+            await execPromise('which tcpkill');
+            console.log('⚠️  tcpkill found - could force immediate disconnect');
+            console.log('Run this manually if needed:');
+            console.log(`   sudo tcpkill -i any port ${PROXY_PORT}`);
+        } catch (err) {
+            console.log('ℹ️  tcpkill not available (optional tool)');
+        }
+        
+    } catch (err) {
+        console.log('⚠️  Cleanup check failed:', err.message);
+        console.log('Continuing anyway...');
+    }
+    
+    console.log('='.repeat(80) + '\n');
+}
 
-// Start the server
-server.listen(8888, '192.168.200.1', () => {
-  console.log('HTTPS server listening on port 8888');
+// **Graceful shutdown handler**
+function gracefulShutdown(signal) {
+    console.log(`\n\n${'='.repeat(80)}`);
+    console.log(`Received ${signal} - Starting graceful shutdown...`);
+    console.log('='.repeat(80));
+    
+    // Close all device connections
+    console.log('Closing all device connections...');
+    let closedCount = 0;
+    Object.keys(sONOFF).forEach(devID => {
+        if (sONOFF[devID].conn && sONOFF[devID].conn.ws) {
+            try {
+                sONOFF[devID].conn.ws.close(1001, 'Server shutdown');
+                closedCount++;
+            } catch (err) {
+                console.error(`Error closing connection for ${devID}:`, err.message);
+            }
+        }
+    });
+    console.log(`✅ Closed ${closedCount} device connection(s)`);
+    
+    console.log('Shutdown complete');
+    console.log('='.repeat(80) + '\n');
+    
+    process.exit(0);
+}
+
+// SSL/TLS configuration
+const options = {
+    secureProtocol: "TLS_method",
+    ciphers: "DEFAULT:@SECLEVEL=0",
+    key: readFileSync(TLS_KEY_PATH),
+    cert: readFileSync(TLS_CERT_PATH),
+};
+
+// **STARTUP SEQUENCE**
+console.log('Starting eWeLink Proxy Server...\n');
+
+// Validate configuration first
+validateConfiguration();
+
+// Run cleanup before starting server
+cleanupOldConnections().then(() => {
+    // Create HTTPS server
+    const server = createServer(options);
+    
+    // Handling HTTPS requests
+    server.on('request', handleHttpRequest);
+
+    // Web Socket Server
+    const wss = new WebSocketServer({ server });
+    
+    function heartbeat() {
+        this.isAlive = true;
+    }
+
+    // Handling WebSocket connections
+    wss.on('connection', (ws, req) => handleWebSocketConnection(ws, req));
+
+    // Handle server errors
+    server.on('error', (err) => {
+        if (err.code === 'EADDRINUSE') {
+            console.error('\n' + '❌'.repeat(80));
+            console.error(`ERROR: Port ${PROXY_PORT} is already in use!`);
+            console.error('❌'.repeat(80));
+            console.error('\nOptions:');
+            console.error(`  1. Kill the process using the port:`);
+            console.error(`     netstat -tlnp | grep ${PROXY_PORT}`);
+            console.error(`     kill <PID>`);
+            console.error(`  2. Use a different port by setting PROXY_PORT environment variable`);
+            console.error(`  3. Wait a few seconds and try again\n`);
+            process.exit(1);
+        } else {
+            console.error('Server error:', err);
+            process.exit(1);
+        }
+    });
+
+    // Start the server
+    server.listen(PROXY_PORT, PROXY_IP, () => {
+        console.log('\n' + '✅'.repeat(80));
+        console.log(`HTTPS PROXY SERVER RUNNING`);
+        console.log('✅'.repeat(80));
+        console.log(`  Listening on: ${PROXY_IP}:${PROXY_PORT}`);
+        console.log(`  TLS Key: ${TLS_KEY_PATH}`);
+        console.log(`  TLS Cert: ${TLS_CERT_PATH}`);
+        console.log(`  Proxy API Key: ${proxyAPIKey.substring(0, 8)}...${proxyAPIKey.substring(proxyAPIKey.length - 4)}`);
+        console.log('✅'.repeat(80) + '\n');
+        console.log('Waiting for device connections...\n');
+    });
+
+    // Import and start command socket
+    import('./cmd-modules/cmd.mjs').then(({ cmdSocket }) => {
+        cmdSocket();
+    });
+
+}).catch(err => {
+    console.error('Fatal error during startup:', err);
+    process.exit(1);
 });
 
-import { cmdSocket } from './cmd.mjs';
-cmdSocket();
+// Register shutdown handlers
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT')); // Ctrl+C
+process.on('SIGUSR2', () => gracefulShutdown('SIGUSR2')); // nodemon restart
 
 export const sONOFFserver = {
-  forward2device: (devID, message) => {
-    let device = sONOFF[devID]; // get relay information
 
-    if (device.conn && device.conn.ws) {
-      console.log('forwarding to device: ' + message);
-      let msgObj = JSON.parse(message);
-      if(msgObj['action'] == 'update') {
-        sONOFF[msgObj['deviceid']]['state'] = msgObj['params']['switch'];
-      }
-      device.conn.ws.send(message.replace(reAPIkey, 'apikey":"' + proxyAPIKey + '"'));
-    }
-  },
-
-  checkinDeviceOnLine: (deviceid) => {
+    /**
+     * Forward message to device
+     * Updates switch state when sending update commands
+     */
+    forward2device: (devID, message) => {
+        let device = sONOFF[devID];
     
-    let ws = sONOFF[deviceid]['conn']['ws'];
-    // Close connection if more than 30 secs from last PING
-    // Clear existing timeout if it exists
-    if (ws['wsTimeout']) {
-      clearTimeout(ws['wsTimeout']);
+        // **Log outgoing WSS message if capture is enabled**
+        if (protocolCapture.enabled && devID === protocolCapture.deviceId && protocolCapture.logFile) {
+            const timestamp = new Date().toISOString();
+            const logEntry = `\n${'='.repeat(80)}\n[${timestamp}] PROXY -> DEVICE (WSS MSG)\n${'-'.repeat(80)}\n${message}\n${'='.repeat(80)}\n`;
+            try {
+                appendFileSync(protocolCapture.logFile, logEntry);
+            } catch (err) {
+                console.error('Error writing to capture file:', err);
+            }
+        }
+    
+        if (device && device.conn && device.conn.ws) {
+            console.log('📤 Forwarding to device:', devID, '"' + (device.alias || 'unknown') + '"');
+            
+            try {
+                let msgObj = JSON.parse(message);
+                
+                // **Update switch state if this is an update command**
+                if (msgObj['action'] == 'update' && msgObj['params'] && msgObj['params']['switch']) {
+                    const newState = msgObj['params']['switch'];
+                    DeviceTracking.setSwitchState(devID, newState);
+                }
+                
+                // Replace apikey with proxyAPIKey (for local communication)
+                const localMessage = message.replace(reAPIkey, 'apikey":"' + proxyAPIKey + '"');
+                device.conn.ws.send(localMessage);
+                
+                if (msgObj['action'] == 'update') {
+                    console.log(`   💡 Command sent: ${msgObj['params']['switch']?.toUpperCase() || 'unknown'}`);
+                }
+                
+            } catch (err) {
+                console.error(`❌ Error forwarding message to ${devID}:`, err.message);
+            }
+        } else {
+            const alias = device?.alias || 'unknown';
+            const localState = device?.localConnectionState || ConnectionState.OFFLINE;
+            const cloudState = device?.cloudConnectionState || ConnectionState.OFFLINE;
+            
+            console.log(`❌ Cannot forward to device ${devID} "${alias}"`);
+            console.log(`   Local: ${localState}, Cloud: ${cloudState}`);
+            
+            if (!device) {
+                console.log(`   Device object doesn't exist`);
+            } else if (!device.conn) {
+                console.log(`   No connection object`);
+            } else if (!device.conn.ws) {
+                console.log(`   WebSocket not established`);
+            }
+        }
+    },
+
+    /**
+     * Check if device is online and handle timeout
+     * Updated to work with three-state system
+     */
+    checkinDeviceOnLine: (deviceid) => {
+        // Add null checks to prevent crash on race conditions
+        if (!sONOFF[deviceid]) {
+            return;
+        }
+
+        // Check if device should be online based on connection states
+        const shouldBeOnline = (
+            sONOFF[deviceid].localConnectionState === ConnectionState.ONLINE &&
+            sONOFF[deviceid].cloudConnectionState === ConnectionState.ONLINE
+        );
+
+        if (!sONOFF[deviceid]['conn']) {
+            if (shouldBeOnline || sONOFF[deviceid]['isOnline']) {
+                console.log('⚠️  checkinDeviceOnLine: Device ' + deviceid + ' marked online but no connection - marking offline');
+                DeviceTracking.setLocalConnectionState(deviceid, ConnectionState.OFFLINE);
+                DeviceTracking.setCloudConnectionState(deviceid, ConnectionState.OFFLINE);
+            }
+            return;
+        }
+
+        if (!sONOFF[deviceid]['conn']['ws']) {
+            return;
+        }
+
+        let ws = sONOFF[deviceid]['conn']['ws'];
+
+        // Verify WebSocket is still in a valid state
+        if (ws.readyState !== 1) { // 1 = OPEN
+            return;
+        }
+
+        // Close connection if more than 5 minutes from last PING
+        // Clear existing timeout if it exists
+        if (ws['wsTimeout']) {
+            clearTimeout(ws['wsTimeout']);
+        }
+
+        // Set a new timeout for 5 minutes (300 seconds)
+        ws['wsTimeout'] = setTimeout(() => {
+            // Double-check WebSocket is still valid before trying to close
+            if (ws.readyState === 1) { // OPEN
+                const alias = sONOFF[deviceid]?.alias || 'unknown';
+                console.log('\n' + '─'.repeat(80));
+                console.log('⏱️  WebSocket connection timeout due to inactivity');
+                console.log(`   Device: ${deviceid} "${alias}"`);
+                console.log(`   Closing connection after 5 minutes of inactivity`);
+                console.log('─'.repeat(80) + '\n');
+                ws.terminate(); // Close the WebSocket connection
+            } else {
+                console.log('⚠️  Timeout fired but WebSocket already closed for: ' + deviceid);
+            }
+        }, 300000); // 300 seconds (5 minutes) in milliseconds
     }
-
-    // Set a new timeout for 30 seconds
-    ws['wsTimeout'] = setTimeout(() => {
-      console.log('\n\n----------------------------------------------------');
-      console.log('-- WebSocket connection closed due to inactivity. --');
-      console.log('-----------         for: ' + ws['deviceid'] + '      -----------');
-      console.log('----------------------------------------------------\n\n');
-      ws.terminate(); // Close the WebSocket connection
-    }, 30000); // 30 seconds in milliseconds
-
-    console.log('\n\nwsTimeout started for device: ' + ws['deviceid'])
-
-  }
 };

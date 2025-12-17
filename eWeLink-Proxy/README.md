@@ -1,41 +1,67 @@
 # eWeLink Proxy
-## OBJECTIVE: 
-eWeLink is the sONOFF cloud server and APP, it is used for operating the relay using WIFI through the internet.
 
-It would be nice to operate the relay through WIFI without using the eWeLink APP and CLOUD server even when connection to the internet is not available. 
+## Objective
 
-The idea is to replace the CLOUD server with a LOCAL one without the sONOFF relay knowing it.
+eWeLink is the cloud platform and mobile app used by SONOFF devices to operate relays over Wi-Fi via the internet.
 
-This would allow a local control of sONOFF devices and eventually integrating it with home automation local software.
+The goal of this project is to make it possible to control SONOFF relays **locally** over Wi-Fi — without relying on the eWeLink app or cloud servers — even when no internet connection is available.
 
-Since eWeLink APP allow us to check and control sONOFF devices from Alexa and from anywhere in the world,
-it would be nice to keep that functionality, thus the LOCAL server would need to PROXY the sONOFF device connection with the CLOUD server when internet connection is available.
+To achieve this, the idea is to **replace the official eWeLink cloud server with a local one**, without the SONOFF devices realizing the difference.
 
-## PROBLEM: 
-The relays during setup time get the address of the cloud server to connect to. when the sONOFF is turned on, it connects to the WIFI network and then will attempt to connect to the cloud server. If not connection to the cloud server is successful, the relay cannot be operated using WIFI.
+This would enable local control of SONOFF devices and open the door for integration with other home automation systems.
 
-## SOLUTION:
-have all sONOFF devices connect to custom WIFI AP which is implemented by using a low cost Linux board and a WIFI usb adapter.
-use IPTABLES to redirect received traffic coming from WIFI interface to local address and port.
+However, since the eWeLink app also allows remote control via Alexa and global access through the internet, it would be ideal to **preserve those capabilities**.
+Therefore, the local server should also function as a **proxy**, forwarding communications between SONOFF devices and the eWeLink cloud whenever internet connectivity is present.
 
-Have a local server running on the Linux board to serve the sONOFF and give a local interface to switch the relay.
+## Problem
 
-In order to keep the cellphone functionality in the case of available internet connection, we can simulate the sONOFF client and connect to the cloud server. This will allow the cloud server to send command which we can then forward to the sONOFF of interest, when sONOFF sends status to server (local) we forward it to the cloud server.
+During setup, each SONOFF relay stores the cloud server address it should connect to.
+When powered on, the device connects to the local Wi-Fi and attempts to reach that cloud server.
+If the device cannot reach the cloud, Wi-Fi control becomes unavailable.
 
-## IMPLEMETATIONs (see corresponding code sub-directories)
-### MITM-PORXY Version
-Originally I started using an open source tool available outthere called [mitmproxy](https://mitmproxy.org/)
+## Solution
 
-However, since I am not familiar with the tool and with Python, after making a working version but with limeted capability, 
-I abbandoned the effort for starting a new version using Node JS
+All SONOFF devices will connect to a **custom local proxy server** hosted on a low-cost Linux board.
 
-1. succefully proxyes the devices to CLOUD server
-2. I was able to inject messages to control locally the sONOFF devices
+When a SONOFF device boots, it sends a DHCP request to obtain an IP address and DNS server.
+The local DHCP server provides the address of a **local DNS server**, which overrides DNS lookups for `eu-disp.coolkit.cc` (the official eWeLink cloud domain).
+Instead of resolving to the real cloud, it returns the IP and port of the **local proxy server**.
 
-However it still requires internet connection working to connect to CLOUD server to function.
+This local server emulates the eWeLink cloud, providing a CLI interface for local relay control.
 
-Thus, it would not be possible to use it locally without the internet connection
+When an internet connection is available, the proxy can also simulate a SONOFF client to connect to the real cloud.
+This allows cloud commands (e.g., from Alexa or the mobile app) to be forwarded to the correct SONOFF device, while device status updates are passed back to the cloud.
+```
+                           ┌──────────────────────┐
+                           │      Cloud Server    │
+                           │ (eWeLink official)   │
+                           └──────────┬───────────┘
+                                      ▲
+                                      │ HTTP/HTTPS (proxy)
+                                      │
+                    ┌─────────────────┴─────────────────┐
+                    │         Local Proxy Server        │
+                    │  (on Linux board - Node.js app)   │
+                    │-----------------------------------│
+                    │  • Forwards traffic to Cloud       │
+                    │  • Provides CLI for local control  │
+                    └─────────────────┬─────────────────┘
+                                      ▲
+                     HTTP/HTTPS       │
+                                      │
+                           ┌──────────┴──────────┐
+                           │     Local DNS       │
+                           │ Overrides eu-disp.* │
+                           └──────────┬──────────┘
+                                      ▲
+                         DNS Query    │
+                                      │
+                           ┌──────────┴──────────┐
+                           │    SONOFF Device    │
+                           │ (asks for cloud IP) │
+                           │  Wi-Fi connection   │
+                           └─────────────────────┘
+```
+### Node.js Version
 
-### Node JS Version
-
-As of now, it implements the local server, however I will need to implement the PROXY functionality in order to keep the eWeLink APP working, even though it is not necessary.
+The current implementation provides the **local server** functionality.

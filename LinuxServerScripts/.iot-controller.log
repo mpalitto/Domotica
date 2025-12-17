@@ -109,6 +109,7 @@ Parsed areas: [ 'SALA/CUCINA', 'PADRONALE', 'NICOLO', 'LAVANDERIA', 'BILOCALE' ]
 Configuration loaded successfully
 IoT House Controller running on http://192.168.1.77:3000
 Map configuration file: /root/Domotica/LinuxServerScripts/iot-controller/map-conf.json
+<<<<<<< HEAD
 Loading configuration from /root/Domotica/LinuxServerScripts
 Parsed areas: [ 'SALA/CUCINA', 'PADRONALE', 'NICOLO', 'LAVANDERIA', 'BILOCALE' ]
   SALA/CUCINA: 10 lights
@@ -385,3 +386,5 @@ IoT House Controller running on http://192.168.1.77:3000
 Map configuration file: /root/Domotica/LinuxServerScripts/iot-controller/map-conf.json
 Light command sent: s:5EA151
 Light command sent: s:5EA151
+=======
+>>>>>>> a67148debc49f077eb27b27e6795afab769721ed

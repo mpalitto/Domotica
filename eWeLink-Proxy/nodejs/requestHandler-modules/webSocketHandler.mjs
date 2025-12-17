@@ -1,0 +1,611 @@
+/*
+Author: Matteo Palitto
+Date: January 9, 2024 (Updated)
+
+Description: webSocketHandler.mjs
+Handles WebSocket connections and communication
+Includes smart dispatch checking using cmd file data
+Uses three-state system for clear status tracking
+*/
+
+import { sONOFF, proxyEvent, protocolCapture, deviceDiagnostics, deviceStats, transparentMode, LOGS_DIR, ConnectionState, SwitchState, debugMode } from '../sharedVARs.js';
+import { handleMessage } from './messageHandler.mjs';
+import { DeviceTracking } from './deviceTracking.mjs';
+import { DeviceIdentification } from './deviceIdentification.mjs';
+import { LoggingService } from './loggingService.mjs';
+import { WEBSOCKET_CONFIG, LOGGING_CONFIG, DIAGNOSTIC_CONFIG } from './config.mjs';
+import { TransparentMode } from '../transparentMode-modules/transparentMode.mjs';
+
+export class WebSocketHandler {
+    /**
+     * Handle incoming WebSocket connection
+     */
+    static async handleConnection(ws, req) {
+        let deviceIP = req.connection.remoteAddress.replace('::ffff:', '');
+        ws['IP'] = deviceIP;
+
+        // Per-connection state - store on ws object for accessibility
+        ws.preIdentificationPings = 0;
+        ws.identificationTimeout = null;
+        ws.pingTimeoutChecker = null;
+        ws.prevPingTime = Date.now();
+        ws.receivedFirstMessage = false;
+        ws.connectionStartTime = Date.now();
+
+        // Get MAC address for this connection
+        const macAddress = await DeviceIdentification.getMACfromIP(deviceIP);
+        if (macAddress) {
+            ws['MAC'] = macAddress;
+        }
+
+        // Try to identify device early
+        const identification = DeviceIdentification.findDeviceByNetworkInfo(deviceIP, macAddress);
+
+        // **SMART VALIDATION - Accept known devices, require dispatch for unknown**
+        if (identification) {
+            const deviceID = identification.deviceID;
+            
+            // Import needed functions
+            const { dispatch } = await import('../sharedVARs.js');
+            const { checkDeviceCompleteness, getDeviceFromCmdFile } = await import('../cmd-modules/cmdFileManager.mjs');
+            
+            // Check if we have recent dispatch data
+            const hasDispatch = dispatch[deviceID];
+            const dispatchAge = deviceDiagnostics[deviceID]?.lastDispatchTime 
+                ? (new Date() - new Date(deviceDiagnostics[deviceID].lastDispatchTime)) / 1000 
+                : Infinity;
+            
+            const DISPATCH_MAX_AGE = 300; // 5 minutes
+            const hasRecentDispatch = hasDispatch && dispatchAge <= DISPATCH_MAX_AGE;
+            
+            if (hasRecentDispatch) {
+                // Has recent dispatch - best case
+                console.log(`✅ ${deviceID} "${identification.alias}" has fresh dispatch (${dispatchAge.toFixed(0)}s ago)`);
+                
+                // Update state to WS-CONNECTED
+                DeviceTracking.initDeviceObject(deviceID, identification.alias);
+                DeviceTracking.setLocalConnectionState(deviceID, ConnectionState.WS_CONNECTED);
+                
+            } else {
+                // No recent dispatch - check if we KNOW this device
+                const completeness = checkDeviceCompleteness(deviceID);
+                
+                if (completeness.complete) {
+                    // Known device with complete data - ACCEPT (proxy restart scenario)
+                    const deviceFromFile = completeness.device;
+                    console.log(`✅ ${deviceID} "${identification.alias}" reconnecting (known device)`);
+                    console.log(`   📋 Using stored apikey: ${deviceFromFile.apikey.substring(0, 8)}...`);
+                    
+                    // Initialize device object
+                    DeviceTracking.initDeviceObject(deviceID, deviceFromFile.alias);
+                    
+                    // Create synthetic dispatch record from cmd file data
+                    const syntheticDispatch = JSON.stringify({
+                        deviceid: deviceID,
+                        apikey: deviceFromFile.apikey,
+                        model: 'ITA-GZ1-GL',
+                        romVersion: '3.5.0',
+                        ip: deviceIP,
+                        mac: macAddress,
+                        source: 'cmd-file-reconnect'
+                    });
+                    
+                    dispatch[deviceID] = syntheticDispatch;
+                    
+                    // Initialize diagnostics and FLAG synthetic dispatch
+                    DeviceTracking.initStats(deviceID);
+                    DeviceTracking.initDiagnostics(deviceID);
+                    deviceDiagnostics[deviceID].lastDispatchTime = new Date().toISOString();
+                    deviceDiagnostics[deviceID].lastDispatchIP = deviceIP;
+                    deviceDiagnostics[deviceID].lastDispatchMAC = macAddress || null;
+                    deviceDiagnostics[deviceID].usingSyntheticDispatch = true;  // **FLAG IT**
+                    
+                    // Update state to WS-CONNECTED
+                    DeviceTracking.setLocalConnectionState(deviceID, ConnectionState.WS_CONNECTED);
+                    
+                    console.log(`   ✅ Ready to accept registration (synthetic dispatch created)`);
+                    
+                } else {
+                    // Truly unknown device or missing critical data - REJECT
+                    console.log(`❌ ${deviceID} "${identification.alias}" is unknown or incomplete`);
+                    console.log(`   Missing: ${completeness.missing.join(', ')}`);
+                    console.log(`   💡 Expected HTTP dispatch first, but not received`);
+                    console.log(`   🔄 Try: power cycle device or check DNS/network configuration`);
+                    
+                    DeviceTracking.initDiagnostics(deviceID);
+                    DeviceTracking.logConnectionAttempt(
+                        deviceID, 
+                        deviceIP, 
+                        'WEBSOCKET', 
+                        false, 
+                        `Rejected: Unknown or incomplete (missing: ${completeness.missing.join(', ')})`
+                    );
+                    
+                    console.log(`   ℹ️  Device will need to perform HTTP POST to /dispatch/device`);
+                    
+                    ws.close(1008, 'Unknown device - must dispatch first');
+                    return; // Exit early
+                }
+            }
+        } else {
+            // Completely unknown connection
+            console.log(`🔌 Unknown device connecting from ${deviceIP} (MAC: ${macAddress || 'unknown'})`);
+            console.log(`   ⚠️  Waiting for identification...`);
+        }
+
+        // Log connection
+        if (LOGGING_CONFIG.VERBOSE) {
+            console.log('\n' + '─'.repeat(80));
+            console.log(`🔌 WebSocket connection from ${deviceIP} (MAC: ${macAddress || 'unknown'})`);
+            if (identification) {
+                console.log(`   Device: ${identification.deviceID} "${identification.alias}"`);
+            }
+            console.log('─'.repeat(80));
+        } else if (identification) {
+            console.log(`🔌 ${identification.deviceID} "${identification.alias}" connecting... (${deviceIP})`);
+        }
+
+        // Track WebSocket connection attempt timing
+        let wsAttemptTime = new Date();
+        
+        // Update diagnostics if we identified the device
+        if (identification) {
+            DeviceTracking.initDiagnostics(identification.deviceID);
+            deviceDiagnostics[identification.deviceID].lastWebSocketAttemptTime = wsAttemptTime.toISOString();
+            deviceDiagnostics[identification.deviceID].lastWebSocketAttemptIP = deviceIP;
+            deviceDiagnostics[identification.deviceID].lastWebSocketAttemptMAC = macAddress || null;
+        }
+
+        // Check if this IP is being captured and log the connection
+        if (protocolCapture.enabled && deviceIP === protocolCapture.ip) {
+            const logData = {
+                IP: deviceIP,
+                MAC: macAddress,
+                URL: req.url,
+                Headers: req.headers,
+                Time: wsAttemptTime.toISOString()
+            };
+            console.log(`*** CAPTURE MODE: WebSocket connection attempt from ${deviceIP} ***`);
+            if (protocolCapture.logFile) {
+                LoggingService.captureLog('DEVICE -> PROXY (WSS CONNECT)', JSON.stringify(logData, null, 2));
+            }
+        }
+
+        // Setup event handlers
+        this.#setupPingHandler(ws, deviceIP, macAddress);
+        this.#setupMessageHandler(ws, deviceIP, macAddress);
+        this.#setupCloseHandler(ws, deviceIP, macAddress, wsAttemptTime);
+        this.#setupErrorHandler(ws, deviceIP, macAddress);
+
+        // Setup timeouts (FIXED HIERARCHY)
+        this.#setupFirstMessageTimeout(ws, deviceIP, macAddress);
+        this.#setupIdentificationTimeout(ws, deviceIP, macAddress);
+    }
+
+    /**
+     * Setup ping handler
+     */
+    static #setupPingHandler(ws, deviceIP, macAddress) {
+        ws.on('ping', () => {
+            const currentTime = Date.now();
+            const timeDifference = (currentTime - ws.prevPingTime) / 1000;
+            ws.prevPingTime = currentTime;
+
+            if (ws['deviceid']) {
+                // Device has identified itself
+                if (ws.preIdentificationPings > 0 && LOGGING_CONFIG.VERBOSE) {
+                    console.log(`ℹ️  Device ${ws['deviceid']} sent ${ws.preIdentificationPings} pings before identifying`);
+                    ws.preIdentificationPings = 0;
+                }
+
+                // Start monitoring ONLY after device is REGISTERED (moved to REGISTER handler)
+                // This prevents premature monitoring before registration completes
+                
+                // Only log if verbose mode or unusual timing
+                if (LOGGING_CONFIG.VERBOSE || LOGGING_CONFIG.SHOW_ROUTINE_PINGS || timeDifference > 20 || timeDifference < 5) {
+                    console.log(`📶 ${ws['deviceid']}: ${timeDifference.toFixed(1)}s since last ping`);
+                }
+                
+                DeviceTracking.initStats(ws['deviceid']);
+                deviceStats[ws['deviceid']].PING_COUNT++;
+                
+                LoggingService.debugLog(ws['deviceid'], 'DEVICE → PROXY', 'PING', `Time since last: ${timeDifference}s`);
+                
+                proxyEvent.emit('pingReceived', ws['deviceid']);
+            } else {
+                // Device hasn't identified yet
+                ws.preIdentificationPings++;
+                
+                // Only log every N pings to reduce spam
+                if (LOGGING_CONFIG.SHOW_PREID_PING_EVERY > 0 && ws.preIdentificationPings % LOGGING_CONFIG.SHOW_PREID_PING_EVERY === 1) {
+                    const identification = DeviceIdentification.findDeviceByNetworkInfo(deviceIP, macAddress);
+                    
+                    if (identification) {
+                        console.log(`📶 Unregistered pings from ${identification.deviceID} "${identification.alias}" (count: ${ws.preIdentificationPings})`);
+                    } else {
+                        console.log(`📶 Unregistered pings from ${deviceIP} (MAC: ${macAddress || 'unknown'}, count: ${ws.preIdentificationPings})`);
+                    }
+                }
+            }
+        });
+    }
+
+    /**
+     * Start ping timeout monitoring
+     * Called AFTER successful registration (from messageHandler REGISTER action)
+     */
+    static startPingMonitoring(ws, deviceID) {
+        // Clear any existing monitor for this device
+        if (ws.pingTimeoutChecker) {
+            clearInterval(ws.pingTimeoutChecker);
+            ws.pingTimeoutChecker = null;
+        }
+        
+        ws.pingTimeoutChecker = setInterval(() => {
+            const timeSinceLastPing = Date.now() - ws.prevPingTime;
+            
+            if (timeSinceLastPing > WEBSOCKET_CONFIG.PING_TIMEOUT) {
+                const deviceAlias = sONOFF[deviceID]?.alias || 'unknown';
+                
+                console.log(`⚠️  PING TIMEOUT: ${deviceID} "${deviceAlias}" (${(timeSinceLastPing/1000).toFixed(0)}s)`);
+                
+                DeviceTracking.logConnectionAttempt(deviceID, ws.IP, 'PING_TIMEOUT', false, `No ping for ${(timeSinceLastPing/1000).toFixed(0)}s`);
+                
+                // Clear this interval
+                clearInterval(ws.pingTimeoutChecker);
+                ws.pingTimeoutChecker = null;
+                
+                // Close the connection
+                ws.close(1001, 'Ping timeout');
+            }
+        }, WEBSOCKET_CONFIG.PING_CHECK_INTERVAL);
+        
+        if (LOGGING_CONFIG.VERBOSE) {
+            console.log(`✅ Ping monitoring started for ${deviceID}`);
+        }
+    }
+
+    /**
+     * Setup message handler
+     */
+    static #setupMessageHandler(ws, deviceIP, macAddress) {
+        ws.on('message', (message) => {
+            const messageString = message.toString();
+            
+            // Mark that we received a message
+            if (!ws.receivedFirstMessage) {
+                ws.receivedFirstMessage = true;
+                const timeToFirstMessage = ((Date.now() - ws.connectionStartTime) / 1000).toFixed(2);
+                
+                if (LOGGING_CONFIG.VERBOSE) {
+                    console.log(`✅ First message from ${deviceIP} after ${timeToFirstMessage}s`);
+                }
+                
+                // Clear first message timeout
+                if (ws.firstMessageTimeout) {
+                    clearTimeout(ws.firstMessageTimeout);
+                    ws.firstMessageTimeout = null;
+                }
+            }
+
+            // Log incoming WSS message if capture is enabled
+            if (protocolCapture.enabled && 
+               (deviceIP === protocolCapture.ip || (ws.deviceid && ws.deviceid === protocolCapture.deviceId))) {
+                
+                if (!protocolCapture.logFile && ws.deviceid) {
+                    protocolCapture.logFile = `${LOGS_DIR}/${ws.deviceid}.log`;
+                    const logData = {
+                        IP: deviceIP,
+                        MAC: macAddress,
+                    };
+                    LoggingService.captureLog('DEVICE -> PROXY (WSS CONNECT)', JSON.stringify(logData, null, 2));
+                }
+                
+                LoggingService.captureLog('DEVICE -> PROXY (WSS RAW MSG)', messageString);
+            }
+
+            // Pass the message to the handler
+            try {
+                handleMessage(ws, messageString, deviceIP);
+            } catch (err) {
+                console.error(`❌ Error processing message from ${deviceIP}:`, err.message);
+                
+                if (ws.deviceid) {
+                    DeviceTracking.logConnectionAttempt(ws.deviceid, deviceIP, 'MESSAGE_ERROR', false, err.message);
+                }
+            }
+        });
+    }
+
+    /**
+     * Setup close handler
+     */
+    static #setupCloseHandler(ws, deviceIP, macAddress, wsAttemptTime) {
+        ws.on('close', (code, reason) => {
+            const deviceID = ws['deviceid'];
+            const closeTime = new Date();
+            const reasonString = reason ? reason.toString() : '';
+            const connectionDuration = ((Date.now() - ws.connectionStartTime) / 1000).toFixed(1);
+            const timeSinceLastPing = ((Date.now() - ws.prevPingTime) / 1000).toFixed(1);
+
+            // **FIXED: If device successfully registered and is closing normally, disable debug ONLY if auto-enabled**
+            if (deviceID && DeviceIdentification.isValidDeviceID(deviceID)) {
+                const wasSuccessful = deviceDiagnostics[deviceID]?.lastWebSocketSuccessTime && 
+                                      new Date(deviceDiagnostics[deviceID].lastWebSocketSuccessTime) >= wsAttemptTime;
+                
+                // Only auto-disable debug if it was auto-enabled AND session was successful
+                if (wasSuccessful && code !== 1006 && code !== 1008) {
+                    if (debugMode.enabled && debugMode.deviceId === deviceID && debugMode.autoEnabled) {
+                        LoggingService.disableDebugForDevice(deviceID);
+                    }
+                }
+            }
+
+            // Only show verbose close details if verbose mode or if it's an error/unexpected
+            const isUnexpected = code === 1006 || parseFloat(connectionDuration) < 30 || !deviceID;
+            
+            if (LOGGING_CONFIG.VERBOSE || isUnexpected) {
+                console.log('\n' + '─'.repeat(80));
+                console.log(`🔌 WebSocket CLOSED: ${deviceID || 'Unidentified'} ${deviceID ? `"${sONOFF[deviceID]?.alias || 'unknown'}"` : ''}`);
+                console.log(`   Code: ${code}, Reason: ${reasonString || 'None'}`);
+                console.log(`   Duration: ${connectionDuration}s, Last ping: ${timeSinceLastPing}s ago`);
+                
+                if (code === 1006) {
+                    console.log(`   ⚠️  Abnormal closure - possible network issue or device crash`);
+                }
+                console.log('─'.repeat(80));
+            } else {
+                // Normal disconnect - just one line
+                console.log(`🔌 ${deviceID} "${sONOFF[deviceID]?.alias || 'unknown'}" disconnected (${connectionDuration}s session)`);
+            }
+
+            // Log WSS close if capture is enabled
+            if (protocolCapture.enabled && (deviceIP === protocolCapture.ip || (deviceID && deviceID === protocolCapture.deviceId))) {
+                const logData = {
+                    DeviceID: deviceID || 'UNKNOWN',
+                    IP: deviceIP,
+                    MAC: macAddress,
+                    Code: code,
+                    Reason: reasonString,
+                    Duration: connectionDuration + 's',
+                    LastPing: timeSinceLastPing + 's ago',
+                    Time: closeTime.toISOString()
+                };
+                LoggingService.captureLog('DEVICE -> PROXY (WSS CLOSE)', JSON.stringify(logData, null, 2));
+            }
+
+            // **Cleanup transparent mode if this was the device**
+            if (transparentMode.enabled && deviceID === transparentMode.deviceId) {
+                console.log(`🔍 Transparent: Device disconnected, cleaning up...`);
+                // Clear deviceid on ws before cleanup
+                if (ws['deviceid']) {
+                    delete ws['deviceid'];
+                }
+                TransparentMode.cleanup();
+            }
+
+            // Clean up all timeouts and intervals
+            if (ws.identificationTimeout) {
+                clearTimeout(ws.identificationTimeout);
+                ws.identificationTimeout = null;
+            }
+            if (ws.pingTimeoutChecker) {
+                clearInterval(ws.pingTimeoutChecker);
+                ws.pingTimeoutChecker = null;
+            }
+            if (ws.firstMessageTimeout) {
+                clearTimeout(ws.firstMessageTimeout);
+                ws.firstMessageTimeout = null;
+            }
+
+            // If device was identified, update diagnostics and emit event
+            if (deviceID && DeviceIdentification.isValidDeviceID(deviceID)) {
+                // Update diagnostics
+                DeviceTracking.initDiagnostics(deviceID);
+                deviceDiagnostics[deviceID].lastOfflineTime = closeTime.toISOString();
+
+                // Only log as failure if never successfully registered
+                const wasSuccessful = deviceDiagnostics[deviceID].lastWebSocketSuccessTime && 
+                                      new Date(deviceDiagnostics[deviceID].lastWebSocketSuccessTime) >= wsAttemptTime;
+                
+                if (!wasSuccessful) {
+                    DeviceTracking.logConnectionAttempt(deviceID, deviceIP, 'WEBSOCKET', false, `Close code ${code}: ${reasonString}`);
+                }
+
+                // Update connection states
+                if (sONOFF[deviceID]) {
+                    const wasOnline = sONOFF[deviceID].isOnline;
+                    
+                    // Update local connection state to OFFLINE
+                    DeviceTracking.setLocalConnectionState(deviceID, ConnectionState.OFFLINE);
+                    
+                    // Only clear the connection if it's THIS connection
+                    if (sONOFF[deviceID].conn && sONOFF[deviceID].conn.ws === ws) {
+                        sONOFF[deviceID]['conn'] = null;
+                        
+                        // Check for quick reconnection
+                        if (wasOnline) {
+                            setTimeout(() => {
+                                if (sONOFF[deviceID] && sONOFF[deviceID].isOnline) {
+                                    const offlineDuration = (Date.now() - closeTime.getTime()) / 1000;
+                                    console.log(`🔄 ${deviceID} "${sONOFF[deviceID].alias}" reconnected (${offlineDuration.toFixed(1)}s offline)`);
+                                }
+                            }, WEBSOCKET_CONFIG.RECONNECTION_CHECK_DELAY);
+                        }
+                    }
+                }
+                
+                // Emit event to close cloud connection
+                proxyEvent.emit('proxy2deviceConnectionClosed', deviceID);
+            
+            } else {
+                // Device never identified itself
+                const identification = DeviceIdentification.findDeviceByNetworkInfo(deviceIP, macAddress);
+                if (identification) {
+                    console.log(`🔌 Likely ${identification.deviceID} "${identification.alias}" disconnected without identifying`);
+                    DeviceTracking.logConnectionAttempt(identification.deviceID, deviceIP, 'WEBSOCKET', false, `Closed before identification (Code ${code})`);
+                }
+            }
+        });
+    }
+
+    /**
+     * Setup error handler
+     */
+    static #setupErrorHandler(ws, deviceIP, macAddress) {
+        ws.on('error', (err) => {
+            const deviceID = ws['deviceid'];
+            
+            console.error(`❌ WebSocket error: ${deviceID || deviceIP} - ${err.message}`);
+
+            // Log WSS error if capture is enabled
+            if (protocolCapture.enabled && (deviceIP === protocolCapture.ip || (deviceID && deviceID === protocolCapture.deviceId))) {
+                const logData = {
+                    DeviceID: deviceID || 'UNKNOWN',
+                    IP: deviceIP,
+                    MAC: macAddress,
+                    Error: err.message,
+                    Code: err.code,
+                    Time: new Date().toISOString()
+                };
+                LoggingService.captureLog('DEVICE -> PROXY (WSS ERROR)', JSON.stringify(logData, null, 2));
+            }
+
+            // Log error in diagnostics
+            let errorDeviceID = deviceID;
+            if (!errorDeviceID) {
+                const identification = DeviceIdentification.findDeviceByNetworkInfo(deviceIP, macAddress);
+                if (identification) {
+                    errorDeviceID = identification.deviceID;
+                }
+            }
+            
+            if (errorDeviceID && DeviceIdentification.isValidDeviceID(errorDeviceID)) {
+                DeviceTracking.logConnectionAttempt(errorDeviceID, deviceIP, 'WEBSOCKET', false, err.message);
+                
+                // Check for TLS errors
+                if (err.message.includes('TLS') || err.message.includes('SSL') || err.message.includes('handshake')) {
+                    DeviceTracking.initDiagnostics(errorDeviceID);
+                    deviceDiagnostics[errorDeviceID].tlsErrors.push({
+                        timestamp: new Date().toISOString(),
+                        ip: deviceIP,
+                        error: err.message,
+                        code: err.code
+                    });
+                    if (deviceDiagnostics[errorDeviceID].tlsErrors.length > DIAGNOSTIC_CONFIG.MAX_ERROR_ENTRIES) {
+                        deviceDiagnostics[errorDeviceID].tlsErrors.shift();
+                    }
+                }
+            }
+        });
+    }
+
+    /**
+     * Setup first message timeout (MUST be shorter than identification timeout)
+     */
+    static #setupFirstMessageTimeout(ws, deviceIP, macAddress) {
+        ws.firstMessageTimeout = setTimeout(() => {
+            // Only apply if device hasn't sent any messages
+            if (!ws.receivedFirstMessage) {
+                const identification = DeviceIdentification.findDeviceByNetworkInfo(deviceIP, macAddress);
+                
+                if (identification) {
+                    console.log(`⚠️  ${identification.deviceID} "${identification.alias}" connected but not sending messages (${WEBSOCKET_CONFIG.FIRST_MESSAGE_TIMEOUT/1000}s)`);
+                    console.log(`   🔍 Enabling debug mode and forcing reconnection...`);
+                    
+                    LoggingService.enableDebugForDevice(
+                        identification.deviceID, 
+                        `Connected but silent for ${WEBSOCKET_CONFIG.FIRST_MESSAGE_TIMEOUT/1000}s - forcing reconnection`,
+                        false  // auto-enabled
+                    );
+                    
+                    LoggingService.debugLog(identification.deviceID, 'CONNECTION INFO', 'STUCK DEVICE DETECTED', 
+                        `IP: ${deviceIP}\nMAC: ${macAddress}\nConnected at: ${new Date(ws.connectionStartTime).toISOString()}\nDuration: ${WEBSOCKET_CONFIG.FIRST_MESSAGE_TIMEOUT/1000}s\nNo messages received`
+                    );
+                    
+                    console.log(`   🔄 Closing connection to force reconnect with debug enabled...`);
+                    ws.close(1008, 'No messages - debug enabled, please reconnect');
+                    
+                } else {
+                    console.log(`⚠️  ${deviceIP} (MAC: ${macAddress || 'unknown'}) connected but silent (${WEBSOCKET_CONFIG.FIRST_MESSAGE_TIMEOUT/1000}s)`);
+                    ws.close(1008, 'No messages received');
+                }
+            } else if (LOGGING_CONFIG.VERBOSE) {
+                // Device has sent messages - this is NORMAL
+                console.log(`✅ Device ${ws.deviceid || 'at ' + deviceIP} is communicating normally`);
+            }
+        }, WEBSOCKET_CONFIG.FIRST_MESSAGE_TIMEOUT);
+    }
+
+    /**
+     * Setup identification timeout (fires AFTER first message timeout)
+     */
+    static #setupIdentificationTimeout(ws, deviceIP, macAddress) {
+        ws.identificationTimeout = setTimeout(() => {
+            if (!ws['deviceid']) {
+                const identification = DeviceIdentification.findDeviceByNetworkInfo(deviceIP, macAddress);
+                
+                if (identification) {
+                    console.log(`⏱️  ${identification.deviceID} "${identification.alias}" timeout (no registration in ${WEBSOCKET_CONFIG.IDENTIFICATION_TIMEOUT/1000}s)`);
+                    console.log(`   🔍 Enabling debug mode and logging timeout details...`);
+                    
+                    // Enable debug for this device
+                    LoggingService.enableDebugForDevice(
+                        identification.deviceID,
+                        `Timeout - no registration in ${WEBSOCKET_CONFIG.IDENTIFICATION_TIMEOUT/1000}s`,
+                        false  // auto-enabled
+                    );
+                    
+                    // Log all available info
+                    LoggingService.debugLog(identification.deviceID, 'TIMEOUT INFO', 'NO REGISTRATION', 
+                        `IP: ${deviceIP}\nMAC: ${macAddress}\nConnected at: ${new Date(ws.connectionStartTime).toISOString()}\nDuration: ${WEBSOCKET_CONFIG.IDENTIFICATION_TIMEOUT/1000}s\nPings received: ${ws.preIdentificationPings}\nMessages received: ${ws.receivedFirstMessage}\nConnection state: ${['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'][ws.readyState]}`
+                    );
+                    
+                    DeviceTracking.logConnectionAttempt(identification.deviceID, deviceIP, 'WEBSOCKET', false, 'Timeout: Did not identify');
+                    
+                    console.log(`   🔄 Closing connection - device will reconnect with debug enabled...`);
+                    
+                } else {
+                    console.log(`⏱️  ${deviceIP} timeout (no identification in ${WEBSOCKET_CONFIG.IDENTIFICATION_TIMEOUT/1000}s)`);
+                }
+                
+                // Log WSS timeout if capture is enabled
+                if (protocolCapture.enabled && deviceIP === protocolCapture.ip) {
+                    const logData = {
+                        IP: deviceIP,
+                        MAC: macAddress,
+                        Error: `Timeout after ${WEBSOCKET_CONFIG.IDENTIFICATION_TIMEOUT / 1000}s`,
+                        Pings: ws.preIdentificationPings,
+                        MessageReceived: ws.receivedFirstMessage,
+                        Time: new Date().toISOString()
+                    };
+                    LoggingService.captureLog('PROXY (WSS TIMEOUT)', JSON.stringify(logData, null, 2));
+                }
+                
+                ws.close(1008, 'Identification timeout');
+            }
+        }, WEBSOCKET_CONFIG.IDENTIFICATION_TIMEOUT);
+    }
+
+    /**
+     * Handle duplicate connection (close old one)
+     */
+    static handleDuplicateConnection(deviceID, newWs, newIP) {
+        if (sONOFF[deviceID] && sONOFF[deviceID].conn && sONOFF[deviceID].conn.ws) {
+            const oldWs = sONOFF[deviceID].conn.ws;
+            
+            // Check if old connection is still open
+            if (oldWs.readyState === 1) { // OPEN
+                console.log(`⚠️  Duplicate connection for ${deviceID} - closing old connection`);
+                console.log(`   Old: ${oldWs.IP}, New: ${newIP}`);
+                
+                oldWs.close(1001, 'Replaced by new connection');
+                return true;
+            }
+        }
+        return false;
+    }
+}
+
+// Export the startPingMonitoring method for use in messageHandler
+export const startPingMonitoring = WebSocketHandler.startPingMonitoring.bind(WebSocketHandler);

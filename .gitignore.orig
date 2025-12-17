@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Packet captures
 *.pcap
 *.pcapng
@@ -18,10 +19,6 @@ eWeLink-Proxy/sONOFFcapture/
 monitor.log
 device_list.txt
 device_state.db
-LinuxServerScripts/.*
-
-# tmp files
-LinuxServerScripts/tmp-files/
 
 # Environment and secrets
 .env
@@ -44,23 +41,13 @@ Thumbs.db
 # Node modules
 node_modules/
 npm-debug.log
-
+=======
 # Ignore specific log files
 LinuxServerScripts/.*.log*
-eWeLink-Proxy/nodejs/logs/
-eWeLink-Proxy/nodejs/.*.log*
 
 # Ignore temporary file
-<<<<<<< HEAD
-LinuxServerScripts/tmp-files
-
-# Ignore secrets files
-LinuxServerScripts/cert.*
-=======
 LinuxServerScripts/tmp
-eWeLink-Proxy/nodejs/tmp/
-eWeLink-Proxy/nodejs/backups/
->>>>>>> a67148debc49f077eb27b27e6795afab769721ed
+>>>>>>> 27d13c72b433e367c93d508a851ce895105dc7ff
 
 # Windows image file caches
 Thumbs.db

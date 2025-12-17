@@ -1,0 +1,46 @@
+This script, `run.sh`, is configuring your Linux machine to act as a **transparent proxy** or a **network gateway** using **`sysctl`** and **`iptables`**.
+
+The goal of these rules is to intercept network traffic (specifically for HTTP/HTTPS/eWeLink ports) destined for external servers and redirect it to a local proxy application running on your device at $\mathbf{192.168.1.11}$ on port $\mathbf{8888}$.
+
+***
+
+## Command-by-Command Explanation
+
+### 1. Enabling IP Forwarding (Gateway Function)
+
+| Command | Explanation |
+| :--- | :--- |
+| `sysctl net.ipv4.ip_forward=1` | This command enables **IP forwarding** in the Linux kernel. It allows the system (your Rock64 device) to act as a **router** and pass network traffic between different interfaces (like traffic coming from an IoT device to the internet, and vice versa). |
+
+### 2. Clearing Existing NAT Rules
+
+| Command | Explanation |
+| :--- | :--- |
+| `iptables -t nat -F` | This command flushes ($\mathbf{-F}$) all rules in the **NAT** (Network Address Translation) table ($\mathbf{-t\ nat}$). This is a crucial step to ensure the script starts with a clean slate and previous rules don't interfere. |
+
+### 4. Setting Up Source NAT (Masquerading)
+
+| Command | Explanation |
+| :--- | :--- |
+| `iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE` | This sets up **Source NAT (SNAT)**. It ensures that any packet leaving the machine through the $\mathbf{eth0}$ interface has its **source IP address replaced** with the machine's external IP address. This is called **Masquerading** and is essential for devices connected to the proxy to access the internet. It makes all outbound traffic appear to come from the proxy server itself. |
+
+### 5. Intercepting Traffic (Destination NAT - DNAT)
+
+The following four rules are the core of the **transparent proxy** setup, using **Destination NAT (DNAT)** in the $\mathbf{PREROUTING}$ chain. This chain processes packets *before* the routing decision is made.
+
+| Command | Destination Port | Explanation (All traffic redirected to $\mathbf{192.168.1.11:8888}$) |
+| :--- | :--- | :--- |
+| `iptables -t nat -A PREROUTING -p tcp --dport 80 -j DNAT --to-destination 192.168.1.11:8888` | **80 (HTTP)** | All incoming TCP packets targeting destination port 80 are redirected to the proxy application at $\mathbf{192.168.1.11:8888}$. |
+| `iptables -t nat -A PREROUTING -p tcp --dport 443 -j DNAT --to-destination 192.168.1.11:8888` | **443 (HTTPS)** | All incoming TCP packets targeting destination port 443 are redirected to the proxy application at $\mathbf{192.168.1.11:8888}$. |
+| `iptables -t nat -A PREROUTING -p tcp --dport 8081 -j DNAT --to-destination 192.168.1.11:8888` | **8081 (eWeLink)** | All incoming TCP packets targeting destination port 8081 (often used by Sonoff/eWeLink devices) are redirected to the proxy application. |
+| `iptables -t nat -A PREROUTING -p tcp --sport 8081 -j DNAT --to-destination 192.168.1.11:8888` | **Source Port 8081** | This rule is unusual. It redirects traffic based on the **source port** ($\mathbf{--sport}$) being 8081. This might be an attempt to capture return traffic, but it is generally incorrect for DNAT in the PREROUTING chain, as the redirection should happen based on the *destination* the device is trying to reach. A packet with a source port of 8081 is one that is *returning* from an external server and is generally handled by the conntrack system, not by explicit PREROUTING rules. This particular rule may be unnecessary or incorrect for the intended proxy setup. |
+
+***
+
+## Summary of Proxy Setup
+
+The script essentially sets up your Rock64 device (at $\mathbf{192.168.1.11}$) as a **Man-In-The-Middle (MITM)** transparent proxy for your network.
+
+1.  **Gateway:** It turns the device into a router using $\mathbf{ip\_forward}$.
+2.  **Redirection:** It captures all outbound HTTP, HTTPS, and eWeLink traffic (ports 80, 443, 8081) and transparently redirects the packets to your Node.js proxy application running on port $\mathbf{8888}$.
+3.  **Internet Access:** It uses $\mathbf{MASQUERADE}$ so the proxyed devices can still get out to the internet through the proxy server.

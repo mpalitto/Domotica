@@ -1,0 +1,30 @@
+[Unit]
+Description=eWeLink Proxy Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/Domotica/eWeLink-Proxy/nodejs
+
+ExecStartPre=/root/Domotica/eWeLink-Proxy/nodejs/config/setup-network.sh
+ExecStartPre=/bin/bash -c '[ -f ./logs/proxy.log ] && mv ./logs/proxy.log ./logs/proxy.log.bak || true'
+ExecStart=/root/Domotica/eWeLink-Proxy/nodejs/start-proxy.sh
+
+# Load environment from file
+EnvironmentFile=/root/Domotica/eWeLink-Proxy/nodejs/config/proxy.env
+
+Restart=always
+RestartSec=2s
+StartLimitInterval=200s
+StartLimitBurst=5
+
+# The append: prefix for output redirection requires systemd v240+. 
+# comment out if your system has an older version that doesn't support this syntax.
+####
+# StandardOutput=append:/root/Domotica/eWeLink-Proxy/nodejs/proxy.log
+# StandardError=append:/root/Domotica/eWeLink-Proxy/nodejs/proxy.log
+
+[Install]
+WantedBy=multi-user.target
