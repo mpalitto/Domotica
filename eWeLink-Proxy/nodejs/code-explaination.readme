@@ -2,17 +2,12 @@ CODE EXPLANATION - eWeLink Proxy System
 ========================================
 
 OVERVIEW:
-This is a local proxy system for Sonoff smart home devices that intercepts communication 
-between the devices and the eWeLink cloud server. It allows local control of Sonoff devices 
+This is a local proxy system for Sonoff smart home devices that intercepts communication
+between the devices and the eWeLink cloud server. It allows local control of Sonoff devices
 while optionally maintaining cloud connectivity.
-Essentially sets up your Linux device as a Man-In-The-Middle (MITM) transparent proxy for your network.
-Gateway: 
-  It turns the device into a router using {ip_forward}.
-Redirection: 
-  It captures all outbound HTTP, HTTPS, and eWeLink traffic (ports 80, 443, 8081) and transparently redirects the packets to the Node.js proxy application.
-Internet Access: 
-  It uses MASQUERADE so the proxyed devices can still get out to the internet through the proxy server.
-
+Essentially sets up a local Linux device as a Man-In-The-Middle (MITM) proxy.
+Redirection:
+  It captures all DNS requests from sONOFF devices and provides the PROXY IP and port for as each device tries to reach out to the cloud server.
 ARCHITECTURE:
 The system consists of 4 main modules working together:
 
