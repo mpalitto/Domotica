@@ -152,7 +152,7 @@ export class DeviceTracking {
         const oldState = sONOFF[deviceID].switchState;
         if (oldState !== normalizedState) {
             sONOFF[deviceID].switchState = normalizedState;
-            console.log(`💡 ${deviceID} "${sONOFF[deviceID].alias}": ${oldState} → ${normalizedState}`);
+            console.log(`UPDATED💡 ${deviceID} "${sONOFF[deviceID].alias}": ${oldState} → ${normalizedState}`);
         }
     }
 

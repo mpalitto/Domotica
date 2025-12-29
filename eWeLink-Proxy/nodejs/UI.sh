@@ -1,7 +1,14 @@
 #!/bin/bash
 
 sonoff() {
-        echo "$*" | nc -w 1 localhost 9999
+        echo $1
+     if [ $1 == "livelog" ]; then
+        journalctl -u ewelink-proxy.service -f	     
+	return
+     elif [ $1 == "?" ]; then
+	echo "livelog                          : it shows the log (live) in terminal"
+     fi
+	echo "$*" | nc -w 1 localhost 9999
 }
 
 SONOFF_FILE="/root/Domotica/eWeLink-Proxy/nodejs/sONOFF.cmd"

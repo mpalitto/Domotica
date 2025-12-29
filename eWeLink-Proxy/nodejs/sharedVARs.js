@@ -9,8 +9,10 @@ This module exports the global variables
 // Object to store sONOFF device information
 const sONOFF = {};
 const cmdFile = './config/sONOFF.cmd' // Initial device configuration file
+// NOTE environment variables: /root/Domotica/eWeLink-Proxy/nodejs/config/proxy.env
 const PROXY_IP = process.env.PROXY_IP || '192.168.1.11';
-const PROXY_PORT = parseInt(process.env.PROXY_PORT) || 8888;
+// const PROXY_PORT = parseInt(process.env.PROXY_PORT) || 8081;
+const PROXY_PORT = parseInt(process.env.PROXY_PORT) || 443;
 const TLS_KEY_PATH = process.env.TLS_KEY_PATH || '/root/WS/tls/matteo-key.pem';
 const TLS_CERT_PATH = process.env.TLS_CERT_PATH || '/root/WS/tls/matteo-cert.pem';
 const LOGS_DIR = './logs';
@@ -78,6 +80,8 @@ const transparentMode = {
     matchedByIp: false
 };
 
+const ipProtocolMap = new Map(); // Key: IP, Value: 'WSS' or 'WS'
+
 module.exports = {
   dispatch,
   sONOFF,
@@ -97,5 +101,6 @@ module.exports = {
   protocolCapture,
   transparentMode,
   ConnectionState,  // Export enums
-  SwitchState
+  SwitchState,
+  ipProtocolMap
 };

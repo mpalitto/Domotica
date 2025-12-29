@@ -6,6 +6,7 @@ Description: webSocketHandler.mjs
 Handles WebSocket connections and communication
 Includes smart dispatch checking using cmd file data
 Uses three-state system for clear status tracking
+FIXED: Proper cleanup of timers when connections are replaced
 */
 
 import { sONOFF, proxyEvent, protocolCapture, deviceDiagnostics, deviceStats, transparentMode, LOGS_DIR, ConnectionState, SwitchState, debugMode } from '../sharedVARs.js';
@@ -16,7 +17,146 @@ import { LoggingService } from './loggingService.mjs';
 import { WEBSOCKET_CONFIG, LOGGING_CONFIG, DIAGNOSTIC_CONFIG } from './config.mjs';
 import { TransparentMode } from '../transparentMode-modules/transparentMode.mjs';
 
+// Track active connections to prevent orphaned timer issues
+const activeConnectionsByIP = new Map();      // IP -> connection object
+const activeConnectionsByDeviceID = new Map(); // deviceID -> connection object
+
 export class WebSocketHandler {
+    
+    /**
+     * Clear all timers for a connection object
+     */
+    static #clearConnectionTimers(connection, reason = '') {
+        if (!connection) return;
+        
+        let cleared = [];
+        
+        if (connection.identificationTimeout) {
+            clearTimeout(connection.identificationTimeout);
+            connection.identificationTimeout = null;
+            cleared.push('identification');
+        }
+        if (connection.firstMessageTimeout) {
+            clearTimeout(connection.firstMessageTimeout);
+            connection.firstMessageTimeout = null;
+            cleared.push('firstMessage');
+        }
+        if (connection.pingTimeoutChecker) {
+            clearInterval(connection.pingTimeoutChecker);
+            connection.pingTimeoutChecker = null;
+            cleared.push('pingChecker');
+        }
+        
+        if (cleared.length > 0 && LOGGING_CONFIG.VERBOSE) {
+            const deviceInfo = connection.ws?.deviceid || connection.ws?.deviceID || connection.ws?.IP || 'unknown';
+            console.log(`🧹 Cleared timers for ${deviceInfo}: [${cleared.join(', ')}] ${reason}`);
+        }
+    }
+    
+    /**
+     * Clean up old connection from same IP (prevents orphaned timers)
+     */
+    static #cleanupExistingConnectionByIP(deviceIP) {
+        const existing = activeConnectionsByIP.get(deviceIP);
+        if (existing && existing.ws) {
+            // Clear all timers from the old connection
+            this.#clearConnectionTimers(existing, '(replaced by new connection from same IP)');
+            
+            // Close old WebSocket if still open
+            if (existing.ws.readyState === 1) { // OPEN
+                console.log(`🔄 Closing old connection from ${deviceIP} (new connection incoming)`);
+                existing.ws.close(1001, 'Replaced by new connection');
+            }
+        }
+        activeConnectionsByIP.delete(deviceIP);
+    }
+    
+    /**
+     * Clean up old connection for same device ID
+     */
+    static #cleanupExistingConnectionByDeviceID(deviceID) {
+        const existing = activeConnectionsByDeviceID.get(deviceID);
+        if (existing && existing.ws) {
+            this.#clearConnectionTimers(existing, `(replaced by new connection for ${deviceID})`);
+            
+            if (existing.ws.readyState === 1) {
+                console.log(`🔄 Closing old connection for ${deviceID} (new connection incoming)`);
+                existing.ws.close(1001, 'Replaced by new connection');
+            }
+        }
+        activeConnectionsByDeviceID.delete(deviceID);
+    }
+    
+    /**
+     * Register connection in tracking maps
+     */
+    static #registerConnection(ws, deviceIP, deviceID = null) {
+        const connectionObj = {
+            ws,
+            ip: deviceIP,
+            deviceID,
+            identificationTimeout: ws.identificationTimeout,
+            firstMessageTimeout: ws.firstMessageTimeout,
+            pingTimeoutChecker: ws.pingTimeoutChecker,
+            createdAt: Date.now()
+        };
+        
+        activeConnectionsByIP.set(deviceIP, connectionObj);
+        
+        if (deviceID) {
+            activeConnectionsByDeviceID.set(deviceID, connectionObj);
+        }
+        
+        return connectionObj;
+    }
+    
+    /**
+     * Update connection tracking when device identifies
+     */
+    static updateConnectionDeviceID(ws, deviceID) {
+        const deviceIP = ws.IP;
+        
+        // Clean up any existing connection for this device ID
+        this.#cleanupExistingConnectionByDeviceID(deviceID);
+        
+        // Get or create connection object
+        let connectionObj = activeConnectionsByIP.get(deviceIP);
+        if (connectionObj && connectionObj.ws === ws) {
+            connectionObj.deviceID = deviceID;
+            // Sync timer references
+            connectionObj.identificationTimeout = ws.identificationTimeout;
+            connectionObj.firstMessageTimeout = ws.firstMessageTimeout;
+            connectionObj.pingTimeoutChecker = ws.pingTimeoutChecker;
+        } else {
+            connectionObj = this.#registerConnection(ws, deviceIP, deviceID);
+        }
+        
+        activeConnectionsByDeviceID.set(deviceID, connectionObj);
+        
+        // Clear identification timeout since device has identified
+        if (ws.identificationTimeout) {
+            clearTimeout(ws.identificationTimeout);
+            ws.identificationTimeout = null;
+            connectionObj.identificationTimeout = null;
+        }
+        
+        // Clear first message timeout if still running
+        if (ws.firstMessageTimeout) {
+            clearTimeout(ws.firstMessageTimeout);
+            ws.firstMessageTimeout = null;
+            connectionObj.firstMessageTimeout = null;
+        }
+    }
+    
+    /**
+     * Check if this WebSocket is still the active connection for its IP
+     */
+    static #isActiveConnection(ws) {
+        const deviceIP = ws.IP;
+        const activeConn = activeConnectionsByIP.get(deviceIP);
+        return activeConn && activeConn.ws === ws;
+    }
+
     /**
      * Handle incoming WebSocket connection
      */
@@ -24,10 +164,14 @@ export class WebSocketHandler {
         let deviceIP = req.connection.remoteAddress.replace('::ffff:', '');
         ws['IP'] = deviceIP;
 
+        // **CRITICAL: Clean up any existing connection from this IP FIRST**
+        this.#cleanupExistingConnectionByIP(deviceIP);
+
         // Per-connection state - store on ws object for accessibility
         ws.preIdentificationPings = 0;
         ws.identificationTimeout = null;
         ws.pingTimeoutChecker = null;
+        ws.firstMessageTimeout = null;
         ws.prevPingTime = Date.now();
         ws.receivedFirstMessage = false;
         ws.connectionStartTime = Date.now();
@@ -44,6 +188,10 @@ export class WebSocketHandler {
         // **SMART VALIDATION - Accept known devices, require dispatch for unknown**
         if (identification) {
             const deviceID = identification.deviceID;
+            ws['deviceID'] = deviceID;
+            
+            // Clean up any existing connection for this device ID too
+            this.#cleanupExistingConnectionByDeviceID(deviceID);
             
             // Import needed functions
             const { dispatch } = await import('../sharedVARs.js');
@@ -178,8 +326,15 @@ export class WebSocketHandler {
         this.#setupErrorHandler(ws, deviceIP, macAddress);
 
         // Setup timeouts (FIXED HIERARCHY)
+        // if (ws.readyState === 1) {
+        //     ws.send(JSON.stringify({ "error": 0, "deviceid": "", "apikey": "" }));
+        //     console.log(`📡 Poked ${deviceIP} to trigger identification`);
+        // }
         this.#setupFirstMessageTimeout(ws, deviceIP, macAddress);
         this.#setupIdentificationTimeout(ws, deviceIP, macAddress);
+        
+        // **CRITICAL: Register this connection AFTER setting up timeouts**
+        this.#registerConnection(ws, deviceIP, identification?.deviceID);
     }
 
     /**
@@ -187,6 +342,14 @@ export class WebSocketHandler {
      */
     static #setupPingHandler(ws, deviceIP, macAddress) {
         ws.on('ping', () => {
+            // **Check if this is still the active connection**
+            if (!this.#isActiveConnection(ws)) {
+                if (LOGGING_CONFIG.VERBOSE) {
+                    console.log(`📶 Ignoring ping from stale connection (${deviceIP})`);
+                }
+                return;
+            }
+            
             const currentTime = Date.now();
             const timeDifference = (currentTime - ws.prevPingTime) / 1000;
             ws.prevPingTime = currentTime;
@@ -198,9 +361,6 @@ export class WebSocketHandler {
                     ws.preIdentificationPings = 0;
                 }
 
-                // Start monitoring ONLY after device is REGISTERED (moved to REGISTER handler)
-                // This prevents premature monitoring before registration completes
-                
                 // Only log if verbose mode or unusual timing
                 if (LOGGING_CONFIG.VERBOSE || LOGGING_CONFIG.SHOW_ROUTINE_PINGS || timeDifference > 20 || timeDifference < 5) {
                     console.log(`📶 ${ws['deviceid']}: ${timeDifference.toFixed(1)}s since last ping`);
@@ -213,6 +373,23 @@ export class WebSocketHandler {
                 
                 proxyEvent.emit('pingReceived', ws['deviceid']);
             } else {
+                const deviceID = ws['deviceID'];
+                
+                if (deviceID && sONOFF[deviceID]) {
+                    const currentState = sONOFF[deviceID].localConnectionState;
+                    
+                    if (currentState === 'WS-CONNECTED') {
+                        // Device is connected but not registered, yet sending pings
+                        console.log(`📶 Ping from WS-CONNECTED device ${deviceID} "${sONOFF[deviceID].alias}"`);
+                        console.log(`   ✅ Auto-promoting to REGISTERED (known device sending pings)`);
+                        
+                        // Update local state
+                        DeviceTracking.setLocalConnectionState(deviceID, ConnectionState.REGISTERED);
+                        
+                        return; // Important: don't process as unregistered ping
+                    }
+                }
+
                 // Device hasn't identified yet
                 ws.preIdentificationPings++;
                 
@@ -242,6 +419,16 @@ export class WebSocketHandler {
         }
         
         ws.pingTimeoutChecker = setInterval(() => {
+            // **Check if this is still the active connection**
+            if (!this.#isActiveConnection(ws)) {
+                clearInterval(ws.pingTimeoutChecker);
+                ws.pingTimeoutChecker = null;
+                if (LOGGING_CONFIG.VERBOSE) {
+                    console.log(`🧹 Stopped ping monitoring for stale connection (${deviceID})`);
+                }
+                return;
+            }
+            
             const timeSinceLastPing = Date.now() - ws.prevPingTime;
             
             if (timeSinceLastPing > WEBSOCKET_CONFIG.PING_TIMEOUT) {
@@ -259,6 +446,12 @@ export class WebSocketHandler {
                 ws.close(1001, 'Ping timeout');
             }
         }, WEBSOCKET_CONFIG.PING_CHECK_INTERVAL);
+        
+        // Update connection tracking
+        const connectionObj = activeConnectionsByIP.get(ws.IP);
+        if (connectionObj && connectionObj.ws === ws) {
+            connectionObj.pingTimeoutChecker = ws.pingTimeoutChecker;
+        }
         
         if (LOGGING_CONFIG.VERBOSE) {
             console.log(`✅ Ping monitoring started for ${deviceID}`);
@@ -285,10 +478,19 @@ export class WebSocketHandler {
                 if (ws.firstMessageTimeout) {
                     clearTimeout(ws.firstMessageTimeout);
                     ws.firstMessageTimeout = null;
+                    
+                    // Update connection tracking
+                    const connectionObj = activeConnectionsByIP.get(deviceIP);
+                    if (connectionObj && connectionObj.ws === ws) {
+                        connectionObj.firstMessageTimeout = null;
+                    }
                 }
             }
 
             // Log incoming WSS message if capture is enabled
+            console.log('🔐 WSS MESSAGE RECEIVED from', ws.deviceid);
+            console.log(':', message.toString());
+
             if (protocolCapture.enabled && 
                (deviceIP === protocolCapture.ip || (ws.deviceid && ws.deviceid === protocolCapture.deviceId))) {
                 
@@ -328,6 +530,19 @@ export class WebSocketHandler {
             const connectionDuration = ((Date.now() - ws.connectionStartTime) / 1000).toFixed(1);
             const timeSinceLastPing = ((Date.now() - ws.prevPingTime) / 1000).toFixed(1);
 
+            // **Check if this was the active connection**
+            const wasActiveConnection = this.#isActiveConnection(ws);
+            
+            // **CRITICAL: Clean up tracking maps ONLY if this was the active connection**
+            if (wasActiveConnection) {
+                activeConnectionsByIP.delete(deviceIP);
+                if (deviceID) {
+                    activeConnectionsByDeviceID.delete(deviceID);
+                }
+            } else if (LOGGING_CONFIG.VERBOSE) {
+                console.log(`ℹ️  Closed connection was not the active one (already replaced)`);
+            }
+
             // **FIXED: If device successfully registered and is closing normally, disable debug ONLY if auto-enabled**
             if (deviceID && DeviceIdentification.isValidDeviceID(deviceID)) {
                 const wasSuccessful = deviceDiagnostics[deviceID]?.lastWebSocketSuccessTime && 
@@ -349,6 +564,7 @@ export class WebSocketHandler {
                 console.log(`🔌 WebSocket CLOSED: ${deviceID || 'Unidentified'} ${deviceID ? `"${sONOFF[deviceID]?.alias || 'unknown'}"` : ''}`);
                 console.log(`   Code: ${code}, Reason: ${reasonString || 'None'}`);
                 console.log(`   Duration: ${connectionDuration}s, Last ping: ${timeSinceLastPing}s ago`);
+                console.log(`   Was active connection: ${wasActiveConnection}`);
                 
                 if (code === 1006) {
                     console.log(`   ⚠️  Abnormal closure - possible network issue or device crash`);
@@ -369,6 +585,7 @@ export class WebSocketHandler {
                     Reason: reasonString,
                     Duration: connectionDuration + 's',
                     LastPing: timeSinceLastPing + 's ago',
+                    WasActiveConnection: wasActiveConnection,
                     Time: closeTime.toISOString()
                 };
                 LoggingService.captureLog('DEVICE -> PROXY (WSS CLOSE)', JSON.stringify(logData, null, 2));
@@ -384,7 +601,7 @@ export class WebSocketHandler {
                 TransparentMode.cleanup();
             }
 
-            // Clean up all timeouts and intervals
+            // Clean up all timeouts and intervals (safety net - should already be cleared)
             if (ws.identificationTimeout) {
                 clearTimeout(ws.identificationTimeout);
                 ws.identificationTimeout = null;
@@ -398,8 +615,8 @@ export class WebSocketHandler {
                 ws.firstMessageTimeout = null;
             }
 
-            // If device was identified, update diagnostics and emit event
-            if (deviceID && DeviceIdentification.isValidDeviceID(deviceID)) {
+            // If device was identified AND this was the active connection, update diagnostics and emit event
+            if (deviceID && DeviceIdentification.isValidDeviceID(deviceID) && wasActiveConnection) {
                 // Update diagnostics
                 DeviceTracking.initDiagnostics(deviceID);
                 deviceDiagnostics[deviceID].lastOfflineTime = closeTime.toISOString();
@@ -438,12 +655,14 @@ export class WebSocketHandler {
                 // Emit event to close cloud connection
                 proxyEvent.emit('proxy2deviceConnectionClosed', deviceID);
             
-            } else {
+            } else if (!deviceID) {
                 // Device never identified itself
                 const identification = DeviceIdentification.findDeviceByNetworkInfo(deviceIP, macAddress);
                 if (identification) {
                     console.log(`🔌 Likely ${identification.deviceID} "${identification.alias}" disconnected without identifying`);
-                    DeviceTracking.logConnectionAttempt(identification.deviceID, deviceIP, 'WEBSOCKET', false, `Closed before identification (Code ${code})`);
+                    if (wasActiveConnection) {
+                        DeviceTracking.logConnectionAttempt(identification.deviceID, deviceIP, 'WEBSOCKET', false, `Closed before identification (Code ${code})`);
+                    }
                 }
             }
         });
@@ -505,6 +724,14 @@ export class WebSocketHandler {
      */
     static #setupFirstMessageTimeout(ws, deviceIP, macAddress) {
         ws.firstMessageTimeout = setTimeout(() => {
+            // **CRITICAL: Check if this is still the active connection**
+            if (!this.#isActiveConnection(ws)) {
+                if (LOGGING_CONFIG.VERBOSE) {
+                    console.log(`⏱️  First message timeout skipped - connection replaced (${deviceIP})`);
+                }
+                return;
+            }
+            
             // Only apply if device hasn't sent any messages
             if (!ws.receivedFirstMessage) {
                 const identification = DeviceIdentification.findDeviceByNetworkInfo(deviceIP, macAddress);
@@ -523,12 +750,8 @@ export class WebSocketHandler {
                         `IP: ${deviceIP}\nMAC: ${macAddress}\nConnected at: ${new Date(ws.connectionStartTime).toISOString()}\nDuration: ${WEBSOCKET_CONFIG.FIRST_MESSAGE_TIMEOUT/1000}s\nNo messages received`
                     );
                     
-                    console.log(`   🔄 Closing connection to force reconnect with debug enabled...`);
-                    ws.close(1008, 'No messages - debug enabled, please reconnect');
-                    
                 } else {
-                    console.log(`⚠️  ${deviceIP} (MAC: ${macAddress || 'unknown'}) connected but silent (${WEBSOCKET_CONFIG.FIRST_MESSAGE_TIMEOUT/1000}s)`);
-                    ws.close(1008, 'No messages received');
+                    // Unknown device - log but don't close
                 }
             } else if (LOGGING_CONFIG.VERBOSE) {
                 // Device has sent messages - this is NORMAL
@@ -542,6 +765,14 @@ export class WebSocketHandler {
      */
     static #setupIdentificationTimeout(ws, deviceIP, macAddress) {
         ws.identificationTimeout = setTimeout(() => {
+            // **CRITICAL: Check if this is still the active connection**
+            if (!this.#isActiveConnection(ws)) {
+                if (LOGGING_CONFIG.VERBOSE) {
+                    console.log(`⏱️  Identification timeout skipped - connection replaced (${deviceIP})`);
+                }
+                return;
+            }
+            
             if (!ws['deviceid']) {
                 const identification = DeviceIdentification.findDeviceByNetworkInfo(deviceIP, macAddress);
                 
@@ -591,21 +822,37 @@ export class WebSocketHandler {
      * Handle duplicate connection (close old one)
      */
     static handleDuplicateConnection(deviceID, newWs, newIP) {
-        if (sONOFF[deviceID] && sONOFF[deviceID].conn && sONOFF[deviceID].conn.ws) {
-            const oldWs = sONOFF[deviceID].conn.ws;
-            
-            // Check if old connection is still open
-            if (oldWs.readyState === 1) { // OPEN
-                console.log(`⚠️  Duplicate connection for ${deviceID} - closing old connection`);
-                console.log(`   Old: ${oldWs.IP}, New: ${newIP}`);
-                
-                oldWs.close(1001, 'Replaced by new connection');
-                return true;
-            }
-        }
-        return false;
+        // Use the new cleanup method
+        this.#cleanupExistingConnectionByDeviceID(deviceID);
+        return true;
+    }
+    
+    /**
+     * Get connection stats (for debugging)
+     */
+    static getConnectionStats() {
+        return {
+            byIP: Array.from(activeConnectionsByIP.entries()).map(([ip, conn]) => ({
+                ip,
+                deviceID: conn.deviceID,
+                age: Math.round((Date.now() - conn.createdAt) / 1000) + 's',
+                hasTimers: {
+                    identification: !!conn.identificationTimeout,
+                    firstMessage: !!conn.firstMessageTimeout,
+                    pingChecker: !!conn.pingTimeoutChecker
+                }
+            })),
+            byDeviceID: Array.from(activeConnectionsByDeviceID.entries()).map(([deviceID, conn]) => ({
+                deviceID,
+                ip: conn.ip,
+                age: Math.round((Date.now() - conn.createdAt) / 1000) + 's'
+            }))
+        };
     }
 }
 
 // Export the startPingMonitoring method for use in messageHandler
 export const startPingMonitoring = WebSocketHandler.startPingMonitoring.bind(WebSocketHandler);
+
+// Export updateConnectionDeviceID for use when device identifies
+export const updateConnectionDeviceID = WebSocketHandler.updateConnectionDeviceID.bind(WebSocketHandler);

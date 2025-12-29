@@ -7,6 +7,7 @@ Main server file with three-state system integration
 
 // imports from third party libraries
 import { createServer } from 'https';
+import { createServer as createHttpServer } from 'http';
 import { readFileSync, appendFileSync } from 'fs';
 import { WebSocketServer } from 'ws';
 import { exec } from 'child_process';
@@ -171,8 +172,10 @@ function gracefulShutdown(signal) {
 
 // SSL/TLS configuration
 const options = {
-    secureProtocol: "TLS_method",
-    ciphers: "DEFAULT:@SECLEVEL=0",
+    // This allows everything from TLS 1.0 up to the latest 1.3
+    minVersion: 'TLSv1',
+    // This lowers the security level to allow the older ciphers used by ESP8266
+    ciphers: 'DEFAULT:@SECLEVEL=0',
     key: readFileSync(TLS_KEY_PATH),
     cert: readFileSync(TLS_CERT_PATH),
 };
@@ -180,57 +183,53 @@ const options = {
 // **STARTUP SEQUENCE**
 console.log('Starting eWeLink Proxy Server...\n');
 
-// Validate configuration first
 validateConfiguration();
 
-// Run cleanup before starting server
 cleanupOldConnections().then(() => {
-    // Create HTTPS server
-    const server = createServer(options);
-    
-    // Handling HTTPS requests
-    server.on('request', handleHttpRequest);
+    // 1. SECURE SERVER (Dispatch on 443 and WSS on 443/8082)
+    const secureServer = createServer(options);
+    // Passing the secureServer object to WSS
+    const wssSecure = new WebSocketServer({ server: secureServer });
 
-    // Web Socket Server
-    const wss = new WebSocketServer({ server });
-    
-    function heartbeat() {
-        this.isAlive = true;
-    }
+    // 2. PLAIN SERVER (Handles WS on 8081)
+    const plainServer = createHttpServer();
+    const wssPlain = new WebSocketServer({ server: plainServer });
 
-    // Handling WebSocket connections
-    wss.on('connection', (ws, req) => handleWebSocketConnection(ws, req));
-
-    // Handle server errors
-    server.on('error', (err) => {
-        if (err.code === 'EADDRINUSE') {
-            console.error('\n' + '❌'.repeat(80));
-            console.error(`ERROR: Port ${PROXY_PORT} is already in use!`);
-            console.error('❌'.repeat(80));
-            console.error('\nOptions:');
-            console.error(`  1. Kill the process using the port:`);
-            console.error(`     netstat -tlnp | grep ${PROXY_PORT}`);
-            console.error(`     kill <PID>`);
-            console.error(`  2. Use a different port by setting PROXY_PORT environment variable`);
-            console.error(`  3. Wait a few seconds and try again\n`);
-            process.exit(1);
-        } else {
-            console.error('Server error:', err);
-            process.exit(1);
+    // Log TLS handshake failures
+    secureServer.on('tlsClientError', (err, socket) => {
+        if (err.code !== 'ECONNRESET') {
+            console.error(`❌ TLS Handshake Error from ${socket.remoteAddress}: ${err.message}`);
         }
     });
 
-    // Start the server
-    server.listen(PROXY_PORT, PROXY_IP, () => {
-        console.log('\n' + '✅'.repeat(80));
-        console.log(`HTTPS PROXY SERVER RUNNING`);
-        console.log('✅'.repeat(80));
-        console.log(`  Listening on: ${PROXY_IP}:${PROXY_PORT}`);
-        console.log(`  TLS Key: ${TLS_KEY_PATH}`);
-        console.log(`  TLS Cert: ${TLS_CERT_PATH}`);
-        console.log(`  Proxy API Key: ${proxyAPIKey.substring(0, 8)}...${proxyAPIKey.substring(proxyAPIKey.length - 4)}`);
-        console.log('✅'.repeat(80) + '\n');
-        console.log('Waiting for device connections...\n');
+    // Handling HTTP requests (Dispatch)
+    secureServer.on('request', handleHttpRequest);
+    plainServer.on('request', handleHttpRequest); // Fallback for non-ssl dispatch if needed
+
+    // Handling WebSocket connections
+    wssSecure.on('connection', (ws, req) => handleWebSocketConnection(ws, req));
+    wssPlain.on('connection', (ws, req) => handleWebSocketConnection(ws, req));
+
+    // Start Secure Server (Port 443)
+    secureServer.listen(PROXY_PORT, PROXY_IP, () => {
+        console.log('✅'.repeat(20));
+        console.log(`SECURE SERVER: https://${PROXY_IP}:${PROXY_PORT}`);
+        console.log('✅'.repeat(20));
+    });
+
+    // Start Plain Server (Port 8081)
+    plainServer.listen(8081, PROXY_IP, () => {
+        console.log('✅'.repeat(20));
+        console.log(`PLAIN SERVER: http://${PROXY_IP}:8081`);
+        console.log('✅'.repeat(20));
+    });
+
+    // WSS specifically on 8082 
+    const secureServer8082 = createServer(options);
+    const wss8082 = new WebSocketServer({ server: secureServer8082 });
+    wss8082.on('connection', (ws, req) => handleWebSocketConnection(ws, req));
+    secureServer8082.listen(8082, PROXY_IP, () => {
+        console.log(`SECURE WSS: wss://${PROXY_IP}:8082`);
     });
 
     // Import and start command socket

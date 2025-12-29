@@ -6,7 +6,7 @@ Description: httpHandler.mjs
 Handles HTTP/HTTPS requests including dispatch requests
 */
 
-import { PROXY_PORT, PROXY_IP, dispatch, sONOFF, protocolCapture, LOGS_DIR, ConnectionState, SwitchState } from '../sharedVARs.js';
+import { PROXY_PORT, PROXY_IP, dispatch, sONOFF, protocolCapture, LOGS_DIR, ConnectionState, SwitchState, ipProtocolMap } from '../sharedVARs.js';
 import { DeviceTracking } from './deviceTracking.mjs';
 import { DeviceIdentification } from './deviceIdentification.mjs';
 import { LoggingService } from './loggingService.mjs';
@@ -56,6 +56,15 @@ export class HttpHandler {
                 // Parse the received JSON message
                 msg = Buffer.concat(bodyChunks).toString();
                 const device = JSON.parse(msg);
+
+                // 1. Look up what protocol this IP used last time
+                const isSecureRequest = !!req.socket.encrypted;
+		const isSecure = req.socket.encrypted === true || req.headers['x-forwarded-proto'] === 'https';
+
+		 console.log('✅'.repeat(40) + '\n');
+                 console.log('Is ',device.deviceid, ' request secure?', isSecure);
+		 console.log(req.socket.server._connectionKey);
+		 console.log('✅'.repeat(40) + '\n');
                 
                 // Validate required fields
                 if (!device.deviceid) {
@@ -131,16 +140,44 @@ export class HttpHandler {
                 // Store dispatch information
                 dispatch[deviceID] = msg;
                 
-                // Create response object
+                
+                console.log(`\n${'📤'.repeat(40)}`);
+                console.log(`[DISPATCH] Processing dispatch for device ${deviceID}`);
+                console.log(`[DISPATCH] Client IP: ${clientIP}`);
+                
+                console.log(`[DISPATCH] Looking up ${clientIP} in ipProtocolMap...`);
+                console.log(`[DISPATCH] Found WSS protocol: ${isSecureRequest || 'NOT FOUND'}`);
+                
+                // Show entire map for debugging
+                console.log(`[DISPATCH] Current ipProtocolMap contents:`);
+                let mapEmpty = true;
+                for (let [ip, proto] of ipProtocolMap.entries()) {
+                    console.log(`   ${ip} -> ${proto}`);
+                    mapEmpty = false;
+                }
+                if (mapEmpty) {
+                    console.log(`   (map is empty)`);
+                }
+                
+                // 2. Decide the port
+                const targetPort = isSecureRequest ? 8082 : 8081;
+                console.log(`[DISPATCH] Protocol WSS: ${isSecureRequest || 'UNKNOWN'} -> Port ${targetPort}`);
+                
                 const response = JSON.stringify({
-                    port: Number(PROXY_PORT),
+                    port: targetPort,
                     reason: "ok",
                     IP: PROXY_IP,
                     error: 0
                 });
                 
+                console.log(`[DISPATCH] Sending response to ${deviceID}:`);
+                console.log(`   IP: ${PROXY_IP}`);
+                console.log(`   Port: ${targetPort}`);
+                console.log(`   Full response: ${response}`);
+                console.log('📤'.repeat(40) + '\n');
+                
                 // Send reply to the client
-                this.#sendReply(res, deviceID, clientIP, response);
+                this.#sendReply(res, deviceID, clientIP, response);	
                 
             } catch (error) {
                 console.error('❌ Error parsing/validating dispatch request:', error.message);

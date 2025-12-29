@@ -7,6 +7,8 @@ Handles device-specific commands (switch, kick, debug)
 */
 
 import { sONOFF, proxyAPIKey, proxyEvent, deviceStats } from '../sharedVARs.js';
+import { DeviceTracking } from '../requestHandler-modules/deviceTracking.mjs';
+
 
 export class DeviceCommands {
     /**
@@ -51,6 +53,9 @@ export class DeviceCommands {
         
         device.conn.ws.send(ONOFFmessage);
         
+	// Update switch state
+        DeviceTracking.setSwitchState(device.conn.ws['deviceid'], toState); // I am assuming the device will send positive ack (this should be done after ack verification)
+
         // Send update message to Cloud
         const cloudMessage = JSON.stringify({
             action: "update",

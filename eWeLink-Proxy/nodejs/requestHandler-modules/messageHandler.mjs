@@ -175,11 +175,13 @@ const messageHandlerInternal = {
                 DeviceTracking.setLocalConnectionState(ws['deviceid'], ConnectionState.REGISTERED);
             }
             
-            // Log important state changes (switch updates)
+            // switch updates received when pressing a button
             if (msgObj['action'] === 'update' && msgObj.params?.switch) {
                 const newSwitchState = msgObj.params.switch.toUpperCase();
                 DeviceTracking.setSwitchState(ws['deviceid'], newSwitchState);
+                console.log(`📱 Switch Command : ${ws['deviceid']} confirmed switch → ${newSwitchState}`);
             }
+
             
             // Process device-specific logic if we have a valid deviceid
             if (ws['deviceid'] && sONOFF[ws['deviceid']]) {

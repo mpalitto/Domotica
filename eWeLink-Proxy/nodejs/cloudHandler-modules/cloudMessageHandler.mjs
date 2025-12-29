@@ -129,7 +129,7 @@ export class CloudMessageHandler {
         });
         
         console.log(`\n${'✅'.repeat(40)}`);
-        console.log(`✅ CLOUD REGISTRATION SUCCESSFUL FOR DEVICE ${deviceID}`);
+        console.log(`✅ CLOUD REGISTRATION SUCCESSFUL FOR DEVICE ${sONOFF[deviceID]?.alias || deviceID}`);
         console.log(`${'✅'.repeat(40)}\n`);
         
         // Get the cloud-provided apikey

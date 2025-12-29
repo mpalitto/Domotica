@@ -1,0 +1,11 @@
+[Unit]
+Description=dnsmasq redirect instance
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/sbin/dnsmasq -k -C /etc/dnsmasq-redirect.conf
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
