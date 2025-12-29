@@ -1,6 +1,8 @@
 # NodeJS version of eWwLink Proxy
-Please refer to [eWeLink-proxy](https://github.com/mpalitto/Domotica/new/master/eWeLink-Proxy) README file 
+Please refer to [eWeLink-proxy](https://github.com/mpalitto/Domotica/tree/master/eWeLink-Proxy#ewelink-proxy) README file 
 for understanding the context of this implementarion
+
+Refer to [Code Explanation](eWeLink-Proxy/nodejs/code-explaination.readme) for detailed code architecture
 
 ## What it offers
 ### Working so far
