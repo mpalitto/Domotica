@@ -1,4 +1,6 @@
 // api.mjs
+
+import events from './events.mjs';
 import { sONOFF } from './storage.mjs';
 import { CONFIG } from './config.mjs';
 
@@ -27,8 +29,9 @@ export function createApiHandler(saveAliases) {
         online: !!dev.online,
         state: dev.state || 'UNKNOWN',
         params: dev.params || { switch: 'off', fwVersion: '—' },
-        fwVersion: dev.params?.fwVersion || '—',   // add this
-        IP: dev.IP || '0.0.0.0'                   // add this
+        fwVersion: dev.params?.fwVersion || '—',   
+        IP: dev.IP || '0.0.0.0',                   
+	cloudConnected: !!dev.conn?.cloudApiKey   
       }));
 
       res.end(JSON.stringify(list));
@@ -72,6 +75,7 @@ export function createApiHandler(saveAliases) {
             params: cmd,
             from: 'app'
           }));
+	  events.emit('device:updated', { deviceID, params: cmd });
           console.log(`[API] → ${deviceID} (${device.alias}):`, cmd);
         }
 

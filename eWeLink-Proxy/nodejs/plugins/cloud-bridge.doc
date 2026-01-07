@@ -1,0 +1,71 @@
+eWeLink Local Proxy – Cloud Bridge Plugin Documentation
+File: cloud-bridge.doc
+Author: Grok (with Matteo Palitto)
+Date: January 07, 2026
+Version: 1.0 (final working version)
+Overview
+The Cloud Bridge plugin enables full bidirectional communication between your local eWeLink proxy and the official eWeLink cloud servers.
+It makes your locally-connected Sonoff/eWeLink devices appear fully online in the official eWeLink mobile app, while all traffic remains routed through your own proxy.
+Key Features
+
+Devices appear online in the eWeLink app (no "offline" status)
+Remote control from the eWeLink app works instantly (toggle switches, etc.)
+No "Sorry, not response" errors
+Local state changes (REST API commands, physical button presses) are synced back to the cloud/app
+Connection remains stable (no unexpected closures)
+Fully mimics real device behavior (based on protocol analysis and packet captures)
+
+How It Works
+
+When a real device connects and registers locally
+The plugin captures the device's original (real) apikey.
+Cloud simulation starts
+Using the real apikey, the plugin performs dispatch to eu-disp.coolkit.cc, obtains a cloud WebSocket server, connects, and registers as the device.
+Bidirectional forwarding
+App → Device: When you toggle a switch in the eWeLink app, the cloud sends an update command.
+The plugin receives it, rebuilds the message in the exact format your local proxy's REST API uses (including from: 'app', local apikey, etc.), updates the local state immediately, and forwards it to the real device's WebSocket.
+It then sends back only a simple sequenced acknowledgment to the cloud (exactly like a real device does – no full state update).
+Device → App: Any state change (from REST API, physical button, or cloud command) triggers device:updated.
+If it's from a cloud command, we skip extra updates (ack already sent).
+Otherwise, we send a normal unsolicited update with userAgent: 'device' and params to keep the app in sync.
+
+
+Requirements
+
+Your devices must connect only to the local proxy (block direct internet access to coolkit.cc domains if needed).
+The proxy must be running both legacy (8081) and modern (8082) modules.
+REST API must emit device:updated on commands (small core modification – see note below).
+
+Installation
+
+Place the file as:
+plugins/cloud-bridge.mjs
+Restart the proxy.
+
+The plugin loads automatically and will start bridging any device that registers with a real (non-local) apikey.
+Important Notes
+
+Region: Currently hardcoded for Europe (eu-disp.coolkit.cc). For other regions (AS/US), change CLOUD_CONFIG.DISPATCH_HOSTNAME.
+Core modification recommended: In core/api.mjs, after sending a command via REST, add:JavaScriptevents.emit('device:updated', { deviceID, params: cmd });(Import events from './events.mjs' if needed.)
+This ensures REST API commands sync to the cloud/app.
+No extra dependencies beyond what the proxy already uses (ws, built-in https).
+
+Logging
+The plugin uses clear console logs prefixed with [CLOUD]:
+
+Dispatch success
+Registration
+Incoming app commands
+Forwarding to device
+Sequenced acks sent
+Unsolicited updates
+
+Troubleshooting
+
+If devices appear offline in app: Check logs for registration success and stable connection.
+If "Sorry, not response": Ensure sequenced ack is sent (visible in logs).
+If connection closes after app command: Verify only the simple ack is sent (no extra update with params).
+
+Credits
+This plugin was developed through extensive reverse-engineering, packet analysis, and iterative testing in collaboration with Matteo Palitto. It replicates real device behavior as closely as possible for seamless integration.
+Enjoy full local control with official app remote access – no compromises!
