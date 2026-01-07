@@ -1,0 +1,40 @@
+import http from 'http';
+import { WebSocketServer } from 'ws';
+import { createDispatchHandler } from './dispatch.mjs';
+import { setupWebSocketServer } from './ws.mjs';
+export class LegacyModule {
+  /**
+   * @param {object} options
+   * @param {object} options.sONOFF Shared device registry
+   * @param {object} options.CONFIG Server configuration
+   * @param {EventEmitter} options.events Shared EventEmitter
+   */
+  constructor({ sONOFF, CONFIG, events }) {
+    this.sONOFF = sONOFF;
+    this.CONFIG = CONFIG;
+    this.events = events;
+    this.httpServer = null;
+    this.wss = null;
+  }
+  /**
+   * Start the legacy HTTP+WS servers
+   */
+  async start() {
+    // ---------------- Dispatch / HTTP server ----------------
+    this.httpServer = http.createServer(
+      createDispatchHandler(this.sONOFF, this.CONFIG, this.events)
+    );
+    this.httpServer.listen(this.CONFIG.legacyPort, this.CONFIG.serverIp, () => {
+      console.log(`✓ Legacy HTTP+WS: ${this.CONFIG.serverIp}:${this.CONFIG.legacyPort}`);
+    });
+    // ---------------- WebSocket server ----------------
+    this.wss = new WebSocketServer({ server: this.httpServer });
+    setupWebSocketServer(
+      this.wss,
+      'legacy',
+      this.sONOFF,
+      this.events,
+      this.CONFIG.localApiKey
+    );
+  }
+}
