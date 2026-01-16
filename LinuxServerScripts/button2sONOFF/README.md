@@ -1,3 +1,5 @@
+# sONOFF local control
+In this version the main goal is the integration of the 433MHz RF sonoff control with the eWelink-Proxy
 ```
 Physical button pressed
           ↓
