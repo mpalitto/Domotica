@@ -1,0 +1,119 @@
+```
+I currently control my SONOFF devices locally using 433 MHz RF.
+However, I now also have the option to control them locally over WiFi using eWeLink-proxy.
+I would like to implement a smart management layer that:
+Receives commands triggered by physical wall switch/button presses
+Decides intelligently whether to send the command to the target SONOFF device via WiFi or RF
+Preferred logic (priority order):
+WiFi first – whenever the device is reachable over WiFi
+→ Reason: WiFi is a bidirectional connection → we get real confirmation that the command was actually received.
+RF as fallback – only when WiFi is not available / device is not responding
+→ Assumption: if RF is configured for that particular SONOFF, the RF channel is considered always potentially available.
+Motivation summary:
+RF is one-way → we never really know whether the command was successfully received
+WiFi (via eWeLink-proxy) is two-way → when connected we have high confidence the device is reachable and the command will be executed
+So ideally:
+Always prefer WiFi when possible → fall back to RF only when WiFi fails / is unavailable.
+Current architecture (how it works today):
+Physical wall switch press
+→ several ESP8266/ESP32 RF 433 MHz receivers catch the signal
+→ receivers forward the event to a Linux server (IP ending in .1.77) using WiFi TCP socket
+→ server runs switch.sh script
+→ script decides what to do and sends the command via USB to an Arduino TX (433 MHz transmitter)
+→ Arduino transmits the RF command → SONOFF device(s) RF receive and react
+
+Goal – next step / desired evolution:
+
+Replace the current dumb routing logic in switch.sh with a smarter decision layer that maintains a per-device status/preference ledger and intelligently chooses the best available channel for each SONOFF.
+
+Proposed decision flow:
+
+Wall button press
+       ↓
+  (known button ID)
+       ↓
+Look up in mapping table
+       ↓
+Button ID → can control one or more SONOFF devices
+                                ↓
+               For each target SONOFF device
+                                ↓
+                 Is WiFi currently reachable?
+                                ↓
+                 ┌─────────────────────────────┐
+                 │      Make a choice          │
+             YES ▼                          NO ▼
+         ┌────────────┐                 ┌────────────┐
+         │ Prefer     │                 │ Fallback   │
+         │ WiFi       │                 │ RF         │
+         └────────────┘                 └────────────┘
+    Send via WiFi(eWeLink-proxy)     Send via RF (Arduino TX)
+          local REST API
+     (bidirectional, reliable)       (classic one-way method)
+
+Key ideas / advantages of this approach:
+1. Single source of truth: one mapping + one status/preference ledger per SONOFF
+2. Always tries the most reliable channel first (WiFi → confirmation possible)
+3. RF becomes true fallback when WiFi is down/offline/slow/unreachable
+4. Still fully local (no cloud dependency when using WiFi via proxy)
+5. Can later add more intelligence (recent success rate, last seen timestamp, manual per-device preference, etc.)
+
+SW architecture:
+considering: each button is identified by a buttonID and each sonoff device by a deviceID
+
+Management layer will keep:
+1. keep for each buttonID the current state (ON/OFF) and the list of sonoff deviceID it controls
+2. keep for each sonoff deviceID the current state (ON/OFF) and if it is wifi connected or not and the RF code used for the toggle command
+3. receive the buttonID from buttonPressReceiver module and toggle the button state
+4. for each device, check if button state differs from device state and eventually send the command to device using the best way
+5. receive, via TCP socket on port 7777, messages from ewelink-proxy for events: device connected/disconnected, device alias update, and device state update. For each message update internal ledger.
+
+current issue:
+since RF and WIFI control where developed separately, the sonoff device name are different... and while in the RF control the device is identified by the RF code used for the toggle command, in the WiFi is used the deviceID given by the maker. Thus a configuration file needs to be created with the following format: deviceID : "alias" : "RFcode" : "comments"
+//sONOFF.config
+{
+  ...,
+  "1000015719": "corridor" : "5EAC01" : "G1G2G3G4-corridoio-principale - Derivazione Blue",
+  ...
+}
+This file will agree with the sONOFF.list in the RF control and the aliases.list in the WiFi control.
+"1000015719": "corridor" : "5EAC01" : "G1G2G3G4-corridoio-principale - Derivazione Blue",
+------------------------ ------------------------------------------------------------
+from aliases.list                                from sONOFFF.list
+
+the mapping could be done manually or there could be a management layer tool (automaticConfig.sh) that will use RF code to toggle the device on->off and would verify which deviceID will be turned on->off as it would receive the state update events from ewelink-proxy.
+
+You can proceed from here writing the following 4 files:
+
+1. modify switch.sh so that it will be devided into 3 files:
+  a. button2sonoff.sh is the main script which will call:
+  b. buttonPressReceiver.sh and the managerLayer.sh
+2.  write automaticConfig.sh that generates the config file for the managementLayer.sh
+
+note: all the code in these 4 files will run in the same HW (.1.77)
+
+I have already developped a "plugins/RF-integration.mjs" for ewelink-proxy which will send the events in the following format:
+// STATE_UPDATE 100001588a OFF
+// CONNECTED 100001588a
+// DISCONNECTED 100001588a
+// ALIAS_UPDATE 100001588a dining
+// where: (deviceID is 100001588a), (deviceAlias is dining), (deviceState is OFF)
+
+
+here is where you can find my switch.sh and related RF control project: https://github.com/mpalitto/Domotica/tree/master/LinuxServerScripts/BUTTON2SONOFF/switch.sh
+ 
+and here is where you can find my ewelink-proxy project: https://github.com/mpalitto/Domotica/tree/master/eWeLink-Proxy/nodejs
+where you can find the main node file: https://github.com/mpalitto/Domotica/tree/master/eWeLink-Proxy/nodejs/core/index.mjs
+
+buttonPressReceiver.sh shell receive from both TCP :1234 and 5678 remote buttons codes
+make sure to keep all code as a bash script for  buttonPressReceiver.sh and the managerLayer.sh, for tcp socket you can use tool "nc/netcat"
+
+you can find a plugin for ewelink-proxy: https://github.com/mpalitto/Domotica/tree/master/eWeLink-Proxy/nodejs/plugins/
+
+avoid code in python as I dont want to add to the code other languages
+
+Make sure buttonPressReceiver.sh has its own config file: you shall keep the "wallSwitches.list" format but it shell be renamed buttons.config
+Make sure to keep untouched sONOFF.list and alias.list.
+
+and managerLayer.sh has its own sONOFF.config as they will be indipendent modules
+```

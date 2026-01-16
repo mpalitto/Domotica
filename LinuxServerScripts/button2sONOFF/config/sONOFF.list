@@ -1,0 +1,66 @@
+# MAPPATURA LUCI - SONOFF RELE
+# 7 = T
+# 5 = S/V
+# 1 = L/i
+# ----------------------------
+s:D0D1C1 # TEST
+# SALA/CUCINA -colore BLU MARE codice luci "SEAS(mari):[1F(low/piano-Forte),F0(forno,AC(angolo cucina),CD(colonna divano),75(TV),D1(divano),15(isola),1A(lavandino),C0(corridoio),A5(angolo vetrata)]:2^(option)"
+V s:5EAC01 #corridor - G1G2G3G4-corridoio-principale - Derivazione Blue
+V s:5EA151 #dining   - G5-area-isola-cucina - Derivazione cabina Daniela
+V s:5EAD11 #center   - G6-area-divano - Derivazione Blue
+V s:5EA751 #coffee   - G7-area-TV - Derivazione Blue
+V s:5EAA51 #piano    - G8-area-angolo-vetrata - Derivazione Blue
+V s:5EA1A1 #kitchen  - G9-area-lavandino - Derivazione cabina Daniela
+V s:5EACD1 #column   - G10-muro-colonna-divano - Derivazione Blue
+V s:5EAAC1 #curr-alarm - G11-muro-angolo-cucina - Derivazione cabina Daniela
+V s:5EAF01 #wall-oven  - G12-muro-forno - Derivazione Blue
+V s:5EA1F1 #wall-piano - G13-muro-pianoforte - Derivazione Blue
+s:5EA5A1 #blinds-open - SerrandaChiusa - Finestra cucina Esterno
+s:5EA551 #blinds-close - SerrandaAperta - Finestra cucina Esterno
+s:5EA5C1 #dish         - LAVASTOVIGLIE
+# PADRONALE - codice luci "DAD(papa/DanielaAlwaysDaniela):[C(corridoio),B(bagno),1(letto),A(cabina armadio)]:[5(serretta),E(esterna),C(centro volta),F(Fianco/muro)]:
+V s:DAD1C1 #master-bed  - P1-area-letto - Derivazione cabina Daniela
+V s:DADCC1 #master-corridor - P2-area-corridoio - Derivazione cabina Daniela
+         #s:DADAC1# P3-area cabina armadio
+V s:DADBC1 #master-bath - P4-area-bagno - Derivazione cabina Daniela
+         #s:DADB?1# P5-muro specchio
+V s:DADB51 #shower-main - P6-area-serretta - Derivazione cabina Daniela
+V s:DADB91 #red         - Grow-Light-serretta - Soffitto serretta
+V s:DADBF1 #shower      - Shower - Soffitto serretta
+V s:D00D22 #tree        -  Tree - Soffitto serretta
+s:DAD1E1 #master-balcony - P7-esterna-portaFinestra-camera - Derivazione cabina Daniela
+
+# NICOLO - codice luci "C001(cool/figo):[1(letto),B(bagno),A(armadio),5(specchio)]"
+V s:C001C1 #nick-bed     - N1-area-camera - Derivazione ingresso Nicolo
+V s:C001B1 #nick-bath    - N2-area-bagno - Derivazione cabina Nicolo
+         #s:C001A1 # N3-area cabina armadio - Derivazione cabina Nicolo
+         #s:C00151 # N4-muro specchio
+
+# LAVANDERIA codice luci "0A55(ass/culo sporco da lavare):[C(centro volta),E(esterna)]"
+V s:0A55C1 #lavanderia   - L1-area-lavanderia - Derivazione lavanderia
+s:0A55E1 #lavanderia-balcony - L2-esterna-portaFinestra-lavanderia - Derivazione lavanderia
+
+# BILOCALE - D00D(Dude/tizio=ospite):[1(letto),5(specchio),C(cucina),B(bagno),F(fuochi),D(disimpegno),E(esterno),0(office Daniela)]"
+V s:D00D01 #tapirulan       - K1-area-porta-scalaD-office-Danilea - Derivazione cucina bilocale
+V s:D00DC2 #office          - K2-area-cucina - Derivazione cucina bilocale
+V s:D00DF3 #wall-office     - K3-muro-cucina-fuochi - Derivazione cucina bilocale
+V s:D00DD4 #disimpgno       - K4-area-disimpegno - Derivazione cucina bilocale
+V s:D00DB1 #bagnetto        - K5-area-bagno - Derivazione cucina bilocale
+V s:D00D32 #pink            - K6-area-letto - Derivazione letto bilocale
+s:D00DE1 # K7-esterno-finestra-bagno
+          #s:D00D51 # K8-muro-specchio
+
+# TERRAZZO - 3EBF(TRE-E/alberi):B(bushes/cespugli):F(fiori):[C(lato corto/nord),1(lato lungo/ovest)]
+s:3EBFC1 # T1-esterna-lato-NORD - Derivazione Blue
+s:3EBF11 # T2-esterna-portaFinestra-cucina - Derivazione Blue
+s:3EBF12 # T3-esterna-finestra-cucina - Derivazione Blue
+MANCANTE SONOFF s:3EBF14 # T4-esterna-finestra-Nicolo - Derivazione cabina Nicolo 
+MANCANTE SONOFF s:3EBF18 # T5-esterna-portaFinestra-studio - Derivazione cucina bilocale
+
+# altri codici interessanti:
+# BAC1
+# CA5A
+# CA220
+# BA1C1(balc-one/1)
+# D0D1C1
+# D1EC1
