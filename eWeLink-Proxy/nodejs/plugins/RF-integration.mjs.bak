@@ -1,0 +1,43 @@
+import net from 'net';
+
+export default {
+  init: (events, sONOFF, CONFIG) => {
+    const host = '192.168.1.77'; // Linux server IP
+    const port = 7777;
+
+    const sendToTcp = (message) => {
+      const client = net.connect(port, host, () => {
+          client.write(message + '\n');
+          client.end();
+      });
+      client.connect(port, host, () => {
+        client.write(message + '\n');
+        client.end();
+      });
+      client.on('error', (err) => {
+        console.error(`[EVENT SENDER] TCP error: ${err.message}`);
+      });
+    };
+
+    events.on('device:connected', ({ deviceID }) => {
+      sendToTcp(`CONNECTED ${deviceID}`);
+    });
+
+    events.on('device:disconnected', ({ deviceID }) => {
+      sendToTcp(`DISCONNECTED ${deviceID}`);
+    });
+
+    events.on('device:updated', ({ deviceID, params }) => {
+      if (params.switch) {
+        const state = params.switch.toUpperCase();
+        sendToTcp(`STATE_UPDATE ${deviceID} ${state}`);
+      }
+    });
+
+    events.on('device:alias-updated', ({ deviceID, alias }) => {
+      sendToTcp(`ALIAS_UPDATE ${deviceID} ${alias}`);
+    });
+
+    console.log('[PLUGIN] EventSender loaded - sending events to TCP 192.168.1.77:7777');
+  }
+};

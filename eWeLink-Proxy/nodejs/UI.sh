@@ -135,6 +135,9 @@ sonoff() {
       fi
     done
 
+  elif [ "$ACTION" = "livelog" ]; then
+	  journalctl -u ewelink-proxy.service -f
+	  return 0
   else
     echo "Error: Unknown command '$ACTION'"
     print_help

@@ -1,6 +1,6 @@
 {
   "1000015709": "curr-alarm",
-  "1000015719": "corridor",
+  "1000015719": "master-corridor",
   "1000015746": "nick-bed",
   "1000015766": "nick-bath",
   "1000015767": "lavanderia",
@@ -19,5 +19,6 @@
   "100001580c": "tapirulan",
   "100001588a": "master-bed",
   "100001572e": "nnsisa1",
-  "100001581b": "center"
+  "100001581b": "center",
+  "1000024d37": "water-valves"
 }
