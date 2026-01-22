@@ -1,3 +1,4 @@
+```
 ═══════════════════════════════════════════════════════════════════════════════
                     eWeLink Local Proxy - Architecture Documentation
 ═══════════════════════════════════════════════════════════════════════════════
@@ -1761,3 +1762,4 @@ For questions, issues, or contributions:
   Issues: https://github.com/mpalitto/Domotica/issues
 
 Last updated: 2025
+```
