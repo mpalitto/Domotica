@@ -5,7 +5,7 @@
 # ----------------------------
 s:D0D1C1 # TEST
 # SALA/CUCINA -colore BLU MARE codice luci "SEAS(mari):[1F(low/piano-Forte),F0(forno,AC(angolo cucina),CD(colonna divano),75(TV),D1(divano),15(isola),1A(lavandino),C0(corridoio),A5(angolo vetrata)]:2^(option)"
-V s:5EAC01 #corridor - G1G2G3G4-corridoio-principale - Derivazione Blue
+V s:5EAC01 #entry - G1G2G3G4-corridoio-principale - Derivazione Blue
 V s:5EA151 #dining   - G5-area-isola-cucina - Derivazione cabina Daniela
 V s:5EAD11 #center   - G6-area-divano - Derivazione Blue
 V s:5EA751 #coffee   - G7-area-TV - Derivazione Blue

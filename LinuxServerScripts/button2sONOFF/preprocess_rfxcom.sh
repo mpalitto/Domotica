@@ -20,7 +20,7 @@
 #   1 - Invalid input format
 #
 # USAGE:
-#   ./preprocess_rfxcom.sh "0A140000B1E4610157C002"
+#   ./preprocess_rfxcom.sh "0A1400aF4A0E91005116441315nodeMCU-0"
 #=============================================================================
 
 # Enable strict mode
@@ -28,6 +28,7 @@ set -euo pipefail
 
 # Input: raw line from RFXCOM
 RAW_LINE="${1:-}"
+# echo "\"$RAW_LINE\""
 
 #-----------------------------------------------------------------------------
 # VALIDATION
@@ -61,6 +62,10 @@ fi
 # In the original code: ${line:9:5}
 SWITCH_ID="${RAW_LINE:9:5}"
 
+# Extract button type from position 14 (3 character)
+# In the original code: ${line:14:3}
+BUTTON_TYPE="${RAW_LINE:14:3}"
+
 # Extract button number from position 17 (1 character)
 # In the original code: ${line:17:1}
 BUTTON_NUMBER="${RAW_LINE:17:1}"
@@ -75,6 +80,11 @@ if [[ ! "$SWITCH_ID" =~ ^[0-9A-Fa-f]+$ ]]; then
     exit 1
 fi
 
+# Validate button type is "010" or "110"
+if [[ ! "$BUTTON_TYPE" =~ ^(010|110|100)$ ]]; then
+    echo "INVALID"
+    exit 1
+fi
 # Validate button number is a digit (0-9)
 if [[ ! "$BUTTON_NUMBER" =~ ^[0-9]$ ]]; then
     echo "INVALID"

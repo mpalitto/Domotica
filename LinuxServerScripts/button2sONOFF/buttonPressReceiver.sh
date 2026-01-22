@@ -12,8 +12,8 @@
 BASE_DIR="/root/Domotica/LinuxServerScripts/button2sONOFF"
 # BUTTONS_CONFIG="$BASE_DIR/config/buttons.config"
 FIFO_PATH="$BASE_DIR/logs/button_fifo"
-DEBOUNCE_TIME=1
-LAST_PRESS_DIR="/tmp/button_last_press"
+DEBOUNCE_TIME=2
+# LAST_PRESS_DIR="/tmp/button_last_press"
 
 mkdir -p "$LAST_PRESS_DIR"
 
@@ -52,31 +52,39 @@ normalize_code() {
     return 1
 }
 
+last_buttID=""
+last_time=0
 handle_port() {
     local port=$1
     # while true; do
 	echo "stdbuf -o0 nc -lk $port"
-        stdbuf -o0 nc -l $port | while read -r button raw_line; do
+        # stdbuf -o0 nc -l $port | while read -r button raw_line; do
+        socat -u TCP-LISTEN:$port,reuseaddr,fork STDOUT | while read -r button raw_line; do
 	    echo " $button $raw_line"
             # 1. Normalize / preprocess
             buttonID="$(normalize_code $button $raw_line)"
-            echo "buttoID: $buttonID"
+            echo "buttonID: $buttonID"
 
-            # 2. Skip if no valid buttonID was extracted
-            [[ -z "$buttonID" ]] && continue
+	    # 2. Skip if no valid buttonID was extracted or explicitly INVALID
+            [[ -z "$buttonID" || "$buttonID" == "INVALID" ]] && continue
+
+	    buttID=${buttonID// /} #remove all spaces
 
             # 3. Debounce
-            last_press_file="$LAST_PRESS_DIR/$buttonID"
             current_time=$(date +%s)
 
-            if [ -f "$last_press_file" ]; then
-                last_time=$(cat "$last_press_file")
+		echo "$buttID =? $last_buttID"
+	    if [[ $buttID == $last_buttID ]]; then
+		echo "$buttID == $last_buttID"
                 if (( current_time - last_time < DEBOUNCE_TIME )); then
-                    continue
+		    echo "debouncing $buttonID"
+                    continue # code already receivced, ignoring this code
                 fi
             fi
-            echo "$current_time" > "$last_press_file"
-            echo "$buttonID" > "$FIFO_PATH"
+	    echo "sending $buttonID to FIFO"
+            echo "$buttonID" > "$FIFO_PATH" # send code to FIFO to get executed
+            last_buttID="$buttID"
+	    last_time="$current_time"
 
             # # 4. Optional: check that this buttonID exists in config
             # if grep -q "^$buttonID[[:space:]]" "$BUTTONS_CONFIG"; then
