@@ -22,17 +22,23 @@ export function createApiHandler(saveAliases) {
 
     // GET /devices → list all devices
     if (req.method === 'GET' && req.url === '/devices') {
-      // api.mjs → inside GET /devices
-      const list = Object.entries(sONOFF).map(([id, dev]) => ({
-        deviceid: id,
-        alias: dev.alias || `Sonoff-${id.slice(-5)}`,
-        online: !!dev.online,
-        state: dev.state || 'UNKNOWN',
-        params: dev.params || { switch: 'off', fwVersion: '—' },
-        fwVersion: dev.params?.fwVersion || '—',   
-        IP: dev.IP || '0.0.0.0',                   
-	cloudConnected: !!dev.conn?.cloudApiKey   
-      }));
+      const list = Object.entries(sONOFF).map(([id, dev]) => {
+        // Check actual WebSocket state instead of relying on flag
+        // WebSocket.readyState: 0=CONNECTING, 1=OPEN, 2=CLOSING, 3=CLOSED
+        const isActuallyOnline = !!(dev.ws && dev.ws.readyState === 1);
+        
+        return {
+          deviceid: id,
+          alias: dev.alias || null,
+          online: isActuallyOnline,  // ← Use real-time WebSocket state
+          state: dev.state || null,
+          params: dev.params || { switch: 'off' },
+          fwVersion: dev.params?.fwVersion || null,
+          IP: dev.IP || null,
+          rssi: dev.params?.rssi ?? null,
+          cloudConnected: !!dev.conn?.cloudApiKey   
+        };
+      });
 
       res.end(JSON.stringify(list));
       return;
@@ -75,7 +81,7 @@ export function createApiHandler(saveAliases) {
             params: cmd,
             from: 'app'
           }));
-	  events.emit('device:updated', { deviceID, params: cmd });
+          events.emit('device:updated', { deviceID, params: cmd });
           console.log(`[API] → ${deviceID} (${device.alias}):`, cmd);
         }
 
@@ -113,4 +119,3 @@ export function createApiHandler(saveAliases) {
     res.end(JSON.stringify({ error: 'Not found' }));
   };
 }
-

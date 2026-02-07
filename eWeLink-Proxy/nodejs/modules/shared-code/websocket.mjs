@@ -109,6 +109,7 @@ export function setupWebSocketServer(wss, type, sONOFF, events, localApiKey) {
  * Handle device registration
  */
 function handleRegister(ws, msg, device, deviceID, type, localApiKey, events) {
+  device.online = true; 
   device.apikey = msg.apikey || device.apikey || 'local';
   device.params ??= { switch: 'off' };
   device.state = 'REGISTERED';
@@ -140,6 +141,7 @@ function handleRegister(ws, msg, device, deviceID, type, localApiKey, events) {
 function handleUpdate(ws, msg, device, deviceID, type, localApiKey, events) {
   device.params = { ...device.params, ...msg.params };
   device.state = 'UPDATED';
+  device.online = true; 
 
   ws.send(JSON.stringify({
     error: 0,

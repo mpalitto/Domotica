@@ -12,10 +12,16 @@ sonoff() {
     echo ""
     echo "Commands:"
     echo " set-alias <deviceID|alias> <newAlias> - Set a new alias"
-    echo " on <deviceID|alias> [newAlias] - Turn device ON"
-    echo " off <deviceID|alias> [newAlias] - Turn device OFF"
-    echo " list - List all devices"
-    echo " ? - Show this help"
+    echo " on <deviceID|alias> [newAlias]        - Turn device ON"
+    echo " off <deviceID|alias> [newAlias]       - Turn device OFF"
+    echo " list [filter]                         - List devices"
+    echo "      all                              - List all devices (default)"
+    echo "      online                           - List online devices only"
+    echo "      offline                          - List offline devices only"
+    echo "      on                               - List online devices with switch ON"
+    echo "      off                              - List online devices with switch OFF"
+    echo " livelog                               - Show live service logs"
+    echo " ?                                     - Show this help"
     echo ""
     echo "Examples:"
     echo " sonoff set-alias 10000158df disimpegno"
@@ -23,6 +29,9 @@ sonoff() {
     echo " sonoff off disimpegno"
     echo " sonoff on disimpegno \"Luce Disimpegno\""
     echo " sonoff list"
+    echo " sonoff list online"
+    echo " sonoff list on"
+    echo " sonoff livelog"
   }
 
   # Show help if no args or ?
@@ -87,7 +96,20 @@ sonoff() {
          -d "$BODY" | jq .
 
   elif [ "$ACTION" = "list" ]; then
-    echo "Fetching device list..."
+    local LIST_FILTER="${TARGET:-all}"
+    
+    # Validate filter
+    case "$LIST_FILTER" in
+      all|online|offline|on|off)
+        ;;
+      *)
+        echo "Error: Unknown list filter '$LIST_FILTER'"
+        echo "Valid filters: all, online, offline, on, off"
+        return 1
+        ;;
+    esac
+
+    echo "Fetching device list (filter: $LIST_FILTER)..."
 
     # Detect if cloud-bridge plugin is present
     local CLOUD_COLUMN=false
@@ -97,47 +119,70 @@ sonoff() {
 
     # Print header
     if $CLOUD_COLUMN; then
-      printf "%-12s | %-18s | %-6s | %-7s | %-10s | %-7s | %-7s | %-6s\n" \
-             "Device ID" "Alias" "Online" "State" "Switch" "FW" "IP" "CLOUD"
-      printf "%-12s-+-%-18s-+-%-6s-+-%-7s-+-%-10s-+-%-7s-+-%-7s-+-%-6s\n" \
-             "------------" "------------------" "------" "-------" "----------" "------" "------" "------"
+      printf "%-12s | %-18s | %-6s | %-7s | %-6s | %-5s | %-7s | %-7s | %-5s\n" \
+             "Device ID" "Alias" "Online" "State" "Switch" "RSSI" "FW" "IP" "CLOUD"
+      printf "%-12s-+-%-18s-+-%-6s-+-%-7s-+-%-6s-+-%-5s-+-%-7s-+-%-7s-+-%-5s\n" \
+             "------------" "------------------" "------" "-------" "------" "-----" "-------" "-------" "-----"
     else
-      printf "%-12s | %-18s | %-6s | %-7s | %-10s | %-7s | %-7s\n" \
-             "Device ID" "Alias" "Online" "State" "Switch" "FW" "IP"
-      printf "%-12s-+-%-18s-+-%-6s-+-%-7s-+-%-10s-+-%-7s-+-%-7s\n" \
-             "------------" "------------------" "------" "-------" "----------" "------" "------"
+      printf "%-12s | %-18s | %-6s | %-7s | %-6s | %-5s | %-7s | %-7s\n" \
+             "Device ID" "Alias" "Online" "State" "Switch" "RSSI" "FW" "IP"
+      printf "%-12s-+-%-18s-+-%-6s-+-%-7s-+-%-6s-+-%-5s-+-%-7s-+-%-7s\n" \
+             "------------" "------------------" "------" "-------" "------" "-----" "-------" "-------"
     fi
 
+    # Build jq filter based on LIST_FILTER
+    local JQ_FILTER=""
+    case "$LIST_FILTER" in
+      all)
+        JQ_FILTER="."
+        ;;
+      online)
+        JQ_FILTER="select(.online == true)"
+        ;;
+      offline)
+        JQ_FILTER="select(.online == false or .online == null)"
+        ;;
+      on)
+        JQ_FILTER="select(.online == true and .params.switch == \"on\")"
+        ;;
+      off)
+        JQ_FILTER="select(.online == true and .params.switch == \"off\")"
+        ;;
+    esac
+
     # Fetch devices and format output
-    curl -s -X GET "$API_URL/devices" | jq -r --arg cloud "$CLOUD_COLUMN" '
-      .[] |
+    # NOTE: Using "-" instead of "—" (em-dash) for proper column alignment
+    curl -s -X GET "$API_URL/devices" | jq -r --arg cloud "$CLOUD_COLUMN" --arg filter "$JQ_FILTER" '
+      .[] | '"$JQ_FILTER"' |
       [
         .deviceid,
-        (.alias // "—"),
+        (.alias // "-"),
         (.online | tostring),
-        (.state // "—"),
-        (.params.switch // "—"),
-        (.fwVersion // "—"),
+        (.state // "-"),
+        (.params.switch // "-"),
+        (if .rssi then (.rssi | tostring) else "-" end),
+        (.fwVersion // "-"),
         (.IP // "0.0.0.0"),
         (if $cloud == "true" then
            (if .cloudConnected | not then "NO" else "YES" end)
          else empty end)
       ] | @tsv
-    ' | while IFS=$'\t' read -r deviceid alias online state switch fw ip cloud_status; do
+    ' | while IFS=$'\t' read -r deviceid alias online state switch rssi fw ip cloud_status; do
       # Show only last two octets of IP
       ip_last2=$(echo "$ip" | awk -F. '{print "."$(NF-1)"."$NF}')
       if $CLOUD_COLUMN; then
-        printf "%-12s | %-18s | %-6s | %-7s | %-10s | %-7s | %-7s | %-6s\n" \
-               "$deviceid" "$alias" "$online" "$state" "$switch" "$fw" "$ip_last2" "${cloud_status:-NO}"
+        printf "%-12s | %-18s | %-6s | %-7s | %-6s | %-5s | %-7s | %-7s | %-5s\n" \
+               "$deviceid" "$alias" "$online" "$state" "$switch" "$rssi" "$fw" "$ip_last2" "${cloud_status:-NO}"
       else
-        printf "%-12s | %-18s | %-6s | %-7s | %-10s | %-7s | %-7s\n" \
-               "$deviceid" "$alias" "$online" "$state" "$switch" "$fw" "$ip_last2"
+        printf "%-12s | %-18s | %-6s | %-7s | %-6s | %-5s | %-7s | %-7s\n" \
+               "$deviceid" "$alias" "$online" "$state" "$switch" "$rssi" "$fw" "$ip_last2"
       fi
     done
 
   elif [ "$ACTION" = "livelog" ]; then
-	  journalctl -u ewelink-proxy.service -f
-	  return 0
+    journalctl -u ewelink-proxy.service -f
+    return 0
+
   else
     echo "Error: Unknown command '$ACTION'"
     print_help
