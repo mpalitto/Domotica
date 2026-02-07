@@ -1,5 +1,8 @@
 # Domotica System Overview
-
+## Folders
+* LinuxServerScripts ---> code implementing the main management logic, receiving button pressed codes and sending the sONOFF commands
+* ewelink-proxy --------> code for gaining sONOFF devices local control through WIFI
+* Arduino --------------> Arduino code for the RF-Tx module, and the ESP8266 RF-Rx module
 ## System Architecture
 This system architecture represents a multi-level communication setup designed to control lights wirelessly using remote controllers, RF signals, ESP8266 modules, Wi-Fi, and a central Linux server.
 
@@ -86,24 +89,24 @@ Each SONOFF-RF device connects to the internet via WiFi and establishes a link w
 
 ### Architecture Overview Diagram
 ```
-   [LWRF Mood Controller]                          [Smartphone App (eWelink)]
-             |                                            |
-             | RF codes (Lightwave proprietary)           |  Cloud communication
-             v                                            v
-    [ESP8266 + RF-RX]                                [SONOFF Cloud Server (eu-disp.coolkit.cc)]
-             |                                            ^
-             | WiFi                                       |
-             v                                            |
-       [Linux Server]                                     |
-             |                                            |  Cloud communication
-             | USB (serial)                               |
-             v                                            |
-   [Arduino + RF-TX]                                      |
-             |                                            |
-             | RF codes (standard)                        v
-             |                                         .-~~~-.
-             v                                      .-~~      ~~-.
- [SONOFF-RF Switch] <--WiFi--> [Home Router] <---> (   Internet   )
-                                                    `-. ~~~~~~~ .-'
+   [LWRF Mood Controller]                                                         [Smartphone App (eWelink)]
+             |                                                                           |
+             | RF codes (Lightwave proprietary)                                          |  Cloud communication
+             v                                                                           v
+    [ESP8266 + RF-RX]                                                               [SONOFF Cloud Server (eu-disp.coolkit.cc)]
+             |                                                                           ^
+             | WiFi                                                                      |
+             v                                                                           |
+       [Linux Server] <-------LAN Socket                                                 |
+             |                         |                                                 |  Cloud communication
+             | USB (serial)            |                                                 |
+             v                         |                                                 |
+   [Arduino + RF-TX]                   |                                                 |
+             |                         |                                                 |
+             | RF codes (standard)     |                                                 v
+             |                         |                                              .-~~~-.
+             v                         v                                           .-~~      ~~-.
+[SONOFF-RF Switch] <--WiFi--> [Linux eWelink-proxy] <--WiFi--> [Home Router] <--> (   Internet   )
+                                                                                   `-. ~~~~~~~ .-'
 ```
-
+The current version has acquired a eWelink-proxy which gives a local control of sONOFF devices though WIFI

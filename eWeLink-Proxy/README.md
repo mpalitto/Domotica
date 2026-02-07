@@ -62,6 +62,9 @@ This allows cloud commands (e.g., from Alexa or the mobile app) to be forwarded 
                            │  Wi-Fi connection   │
                            └─────────────────────┘
 ```
-### Node.js Version
+### Node.js Folder
 
-The current implementation provides the **local server** functionality.
+The current eWelink-proxy implementation provides the **local server** functionality.
+### DNS Folder
+provide the DNSMASQ DNS Server configuration
+###
