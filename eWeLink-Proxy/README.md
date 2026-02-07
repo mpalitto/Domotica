@@ -15,7 +15,7 @@ Therefore, the local server should also function as a **proxy**, forwarding comm
 
 ## Problem
 
-During setup, each SONOFF relay stores the cloud server address it should connect to.
+During setup, each SONOFF device stores the cloud server address it should connect to.
 When powered on, the device connects to the local Wi-Fi and attempts to reach that cloud server.
 If the device cannot reach the cloud, Wi-Fi control becomes unavailable.
 
@@ -62,6 +62,56 @@ This allows cloud commands (e.g., from Alexa or the mobile app) to be forwarded 
                            │  Wi-Fi connection   │
                            └─────────────────────┘
 ```
+### Adding a New Sonoff Device to Your Local Proxy
+When adding a new Sonoff device to your network, follow these steps to ensure it connects to your local proxy instead of the cloud:
+
+Step 1: Temporarily Disable Local DNS Override
+
+> Turn OFF your local DNS redirection that forces Sonoff devices to use your proxy.
+
+Step 2: Configure Device Using Official Method
+
+> Follow the standard eWeLink app pairing procedure:
+```
+Open the eWeLink app on your phone
+Add the device using the normal pairing process
+Complete setup and verify the device connects to the cloud
+Test that the device responds to commands from the app
+```
+
+Step 3: Block Internet Access at Router Level
+
+> Once the device is working normally:
+
+>> Go to your router's settings, 
+
+>> Find the newly added Sonoff device in the device list (check for a device with MAC Address stating with "d0:27:00")
+
+>> Block internet access using one of these methods:
+```
+Parental Controls: Set allowed internet time to 0 hours/day
+Access Control: Block the device completely
+Device Blocking: Use the "Block" or "Pause Internet" feature
+```
+
+> Why this step is critical: Some Sonoff devices cache the cloud server's IP address in memory. Blocking internet access at the router level prevents these devices from bypassing your local DNS redirection and connecting directly to the cached cloud IP.
+
+Step 4: Re-enable Local DNS Override
+
+> Turn your local DNS redirection back ON to redirect future devices to your proxy.
+
+Step 5: Verify Local Connection
+
+> The device will automatically reconnect to your local proxy:
+
+Step 6: Check if device appears as online
+
+`sonoff list online`
+
+Step 7: Provide alias name
+
+`sonoff set-alias <deviceID|alias> <newAlias>`
+
 ### Node.js Folder
 
 The current eWelink-proxy implementation provides the **local server** functionality.
