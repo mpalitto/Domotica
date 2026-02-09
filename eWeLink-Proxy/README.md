@@ -62,6 +62,13 @@ This allows cloud commands (e.g., from Alexa or the mobile app) to be forwarded 
                            │  Wi-Fi connection   │
                            └─────────────────────┘
 ```
+## Installation & Configuration Steps
+* Application Setup: Navigate to the nodejs directory to begin the eWeLink-Proxy software installation.
+* Network Setup:
+  1. Head to the DNS directory to configure the local DNS Server and traffic redirection.
+  2. Access your home router settings to configure DHCP Server
+  3. Follow the instructions below to add a new sONOFF device
+
 ### Adding a New Sonoff Device to Your Local Proxy
 When adding a new Sonoff device to your network, follow these steps to ensure it connects to your local proxy instead of the cloud:
 
