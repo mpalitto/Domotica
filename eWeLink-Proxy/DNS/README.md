@@ -1,61 +1,72 @@
-================================================================================
-SONOFF LOCAL CONTROL PROJECT - DNS REDIRECTION SETUP
-================================================================================
+# 1. Intent of the Configuration
+The primary goal is DNS Hijacking for IoT devices. By intercepting requests to domains like coolkit.cc and ewelink.cc, you trick your smart switches and plugs into communicating with a local server (192.168.1.11) instead of the manufacturer's cloud.
 
-PROJECT OVERVIEW:
------------------
-This project enables local control of Sonoff smart devices by intercepting their
-DNS requests and redirecting them to a local eWeLink proxy server. This prevents
-the devices from reaching the external Coolkit cloud while allowing the local 
-proxy to bridge the communication.
+Privacy: Keeps device data within your local network.
 
-ARCHITECTURE:
--------------
-1. Main Router (DHCP Server)
-   └── Points all network clients to this Rock64 (192.168.1.11) as the DNS Server.
+Speed: Reduces latency by processing commands locally.
 
-2. Linux DNS Server (Single machine running all services)
-   ├── Primary System DNS (resolv.conf) -> Points to External DNS (e.g., 1.1.1.1).
-   │   └── Used by the eWeLink Proxy to find the REAL cloud server IPs.
-   │
-   ├── Redirected dnsmasq (Port 5555) -> "The Liar".
-   │   └── Uses 'address=' rules to point Coolkit domains to 192.168.1.11.
-   │
-   ├── nftables Rules -> "The Traffic Cop".
-   │   └── Identifies Sonoff MAC addresses (d0:27:00:*) and forces their 
-   │       DNS traffic (port 53) to Port 5555.
-   │
-   └── eWeLink Proxy Server (Port 8888) -> "The Middleman".
-       └── Receives redirected device traffic and forwards it to the real cloud.
+Local Control: Allows platforms like Home Assistant or a custom proxy to control devices even if your internet is down.
 
-SPLIT-BRAIN DNS LOGIC:
-----------------------
-To avoid a loop, the same domain must resolve to two different places:
-1. For Sonoff Devices: eu-disp.coolkit.cc -> 192.168.1.11 (Local Proxy)
-2. For the Proxy App:  eu-disp.coolkit.cc -> 52.57.6.180 (Real Internet IP)
+## 2. How it Works
+```
+NOTE: 
+in my network the DNS Server is on a debian based Single Board Computer(SBC),
+the same SBC where the eWeLink-Proxy is run.
+The SBC IP address in my case is: 192.168.1.11
+```
+Dnsmasq acts as the "traffic controller" for your network's DNS queries.
 
-This is achieved by keeping the domain OUT of /etc/hosts and defining it
-strictly within the dnsmasq instance listening on port 5555.
+#### Core Components
+1. Upstream Forwarding: For normal requests (like google.com), dnsmasq forwards the query to Google (8.8.8.8) or Cloudflare (1.1.1.1).
 
+2. The "Sinkhole" Strategy: In sonoff.conf, the configuration uses the address=/domain/IP syntax. This tells dnsmasq: "If anyone asks for this domain, don't look it up online; tell them it is located at 192.168.1.11."
 
+3. IPv6 Neutralization: The entries mapping domains to :: (the IPv6 "unspecified" address) act as a sinkhole. This prevents devices from bypassing your IPv4 proxy by trying to connect via IPv6.
 
-SONOFF TRAFFIC FLOW (INTERCEPTED):
-----------------------------------
-Sonoff Device (MAC: d0:27:00:xx:xx:xx)
-  ↓ (DNS query for eu-disp.coolkit.cc)
-nftables redirect rule
-  ↓ (Intercepted and sent to Local Port 5555)
-Secondary dnsmasq instance
-  ↓ (Responds with 192.168.1.11)
-Sonoff connects to Local eWeLink Proxy (Port 8888)
+#### Configuration Breakdown
+```
+etc/
+├── dnsmasq.conf
+└── dnsmasq.d
+    └── sonoff.conf
+```
+* `dnsmasq.conf`	--> Global Settings: Sets the listening interface (eth0), disables system default resolvers (no-resolv), and defines public upstream servers.
+* `sonoff.conf`	--> Domain Specifics: Maps all eWeLink and Coolkit subdomains to your local proxy IP (192.168.1.11).
+## 3. Installation & Deployment
+Since the files are currently in a subfolder (~/Domotica/...), you need to move them to the system path and restart the service.
 
-PROXY/GENERIC TRAFFIC FLOW (SYSTEM):
-------------------------------------
-eWeLink Proxy / Local System
-  ↓ (DNS query for eu-disp.coolkit.cc)
-System Resolver (/etc/resolv.conf)
-  ↓ (Bypasses nftables redirect)
-External DNS Server (1.1.1.1)
-  ↓ (Responds with REAL Cloud IP)
-Proxy successfully connects to WAN to forward device data.
-================================================================================
+Step 1: Install Dnsmasq
+On a Debian-based system, run:
+
+```
+sudo apt update
+sudo apt install dnsmasq
+```
+Step 2: Deploy Configuration
+Move the custom files to the standard system locations:
+
+```
+# Backup original config if it exists
+sudo mv /etc/dnsmasq.conf /etc/dnsmasq.conf.bak
+```
+# Copy the files
+```
+sudo cp ~/Domotica/eWeLink-Proxy/DNS/etc/dnsmasq.conf /etc/dnsmasq.conf
+sudo cp ~/Domotica/eWeLink-Proxy/DNS/etc/dnsmasq.d/sonoff.conf /etc/dnsmasq.d/
+```
+Step 3: Permissions and Testing
+Ensure the log file exists and the syntax is correct:
+
+```
+sudo touch /var/log/dnsmasq.log
+sudo chown dnsmasq:root /var/log/dnsmasq.log
+```
+# Check for syntax errors
+`dnsmasq --test`
+Step 4: Restart Service
+`sudo systemctl restart dnsmasq`
+4. Validation
+To verify the redirection is working, run this command from any machine on your network:
+
+`nslookup eu-disp.coolkit.cc`
+Expected Result: It should return 192.168.1.11 instead of a public IP address.
