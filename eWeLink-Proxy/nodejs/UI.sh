@@ -1,7 +1,8 @@
 #!/bin/bash
 # File: UI.sh
 # Usage: source UI.sh
-# Then use: sonoff list, sonoff on cucina, sonoff set-alias 10000158df "Cucina Luce", etc.
+# Then use: sonoff ?, sonoff list, sonoff on cucina, sonoff set-alias 10000158df "cucina", etc.
+#      use: sonoff ?  --> to get a complete list of commands avaiable 
 
 sonoff() {
   local API_URL="http://localhost:3000"
