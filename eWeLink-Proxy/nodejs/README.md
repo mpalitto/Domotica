@@ -132,6 +132,24 @@ Sonoff/eWeLink devices normally communicate with Chinese cloud servers:
   ✓ TLS compatibility with ESP8266 chips
   ✓ Modular, maintainable architecture
 
+NOTE: To simplify testing, I’ve included a CLI wrapper for the REST API.
+      Once you source UI.sh (`. ./UI.sh`), you can use the following commands:
+------------------------------------------------------------------------------
+Usage: sonoff <command> [arguments]
+
+Commands:
+ set-alias <deviceID|alias> <newAlias> - Set a new alias
+ on <deviceID|alias> [newAlias]        - Turn device ON
+ off <deviceID|alias> [newAlias]       - Turn device OFF
+ list [filter]                         - List devices
+      all                              - List all devices (default)
+      online                           - List online devices only
+      offline                          - List offline devices only
+      on                               - List online devices with switch ON
+      off                              - List online devices with switch OFF
+ livelog                               - Show live service logs
+ ?                                     - Show this help
+------------------------------------------------------------------------------
 
 1.4. SUPPORTED DEVICES
 ───────────────────────────────────────────────────────────────────────────────
@@ -1340,10 +1358,11 @@ export const CONFIG = {
 
 Method 1: Router DNS Override (Recommended)
   
-  Example (OpenWrt/DD-WRT):
-    echo "192.168.1.11 dispatch.ewelink.cc" >> /etc/dnsmasq.conf
-    echo "192.168.1.11 eu-disp.coolkit.cc" >> /etc/dnsmasq.conf
-    /etc/init.d/dnsmasq restart
+  DHCP configuration:
+    * Primary DNS: IP of your DNS Server (e.g. 192.168.1.11)
+    * DNS configuration: check "eWeLink-Proxy/DNS" folder
+      for example configuration (using dnsmasq as DNS server)
+   
 
   Example (Pi-hole):
     Admin → Local DNS → DNS Records
@@ -1670,79 +1689,35 @@ nano core/config.mjs
 # 5. Configure router DNS
 # Add DNS override: dispatch.ewelink.cc → <your-server-ip>
 
-# 6. Run server
-node core/index.mjs
+# 6. Run server (for testing)
+  node core/index.mjs
 
+# 7 Runnig as a Service
+  see section below
 
-12.3. RUNNING AS A SERVICE
+12.3. Running the Server
 ───────────────────────────────────────────────────────────────────────────────
+  run the following command `. ./install.sh`
+  # This script will install the ewelink-proxy as a Systemd Service (Linux) and print out the instructions.
+  # The service will be started immediatly and on every system boot
 
-Systemd Service (Linux):
-
-# Create service file
-sudo nano /etc/systemd/system/ewelink-proxy.service
-
-[Unit]
-Description=eWeLink Local Proxy
-After=network.target
-
-[Service]
-Type=simple
-User=pi
-WorkingDirectory=/home/pi/ewelink-proxy
-ExecStart=/usr/bin/node core/index.mjs
-Restart=always
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
-
-# Enable and start
-sudo systemctl enable ewelink-proxy
-sudo systemctl start ewelink-proxy
-
-# Check status
-sudo systemctl status ewelink-proxy
-
-# View logs
-sudo journalctl -u ewelink-proxy -f
-
-
-PM2 (Process Manager):
-
-# Install PM2
-npm install -g pm2
-
-# Start application
-pm2 start core/index.mjs --name ewelink-proxy
-
-# Configure autostart
-pm2 startup
-pm2 save
-
-# Monitor
-pm2 monit
-
-# Logs
-pm2 logs ewelink-proxy
-
+  NOTE: once the `. ./UI.sh` is run it is possible to check the logs by simply run the "sonoff livelog" command
+        run "service ewelink-proxy restart; sonoff livelog" to check the proxy log as it starts
 
 12.4. PRODUCTION CONSIDERATIONS
 ───────────────────────────────────────────────────────────────────────────────
 
 Security:
-  ✓ Change default localApiKey
   ✓ Restrict API port (3000) to LAN only
   ✓ Use firewall rules to block internet access
   ✓ Regular security audits
 
 Performance:
   ✓ Monitor memory usage (should be < 100MB)
-  ✓ Log rotation (PM2 handles this)
   ✓ Limit plugin count
 
 Reliability:
-  ✓ Use systemd or PM2 for auto-restart
+  ✓ Use systemd for auto-restart
   ✓ Monitor logs for errors
   ✓ Backup aliases.json regularly
   ✓ UPS for server (prevent data loss)
@@ -1761,5 +1736,5 @@ For questions, issues, or contributions:
   GitHub: https://github.com/mpalitto/Domotica/ewelink-proxy/nodejs
   Issues: https://github.com/mpalitto/Domotica/issues
 
-Last updated: 2025
+Last updated: 2026
 ```
