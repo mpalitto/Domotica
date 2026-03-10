@@ -108,6 +108,7 @@ dhcp-range=tag:iot,192.168.1.128,192.168.1.191,255.255.255.0,12h
 ```
 # This is the second dnsmasq instance — DNS-only, answers everything with 192.168.1.11
 # No dhcp-range is defined, so this instance does not serve DHCP.
+pid-file=/var/run/dnsmasq-iot.pid # use a separate PID file
 
 port=1053                    # Avoids conflict with main dnsmasq on port 53
 listen-address=192.168.1.1   # Only listen on the LAN IP
@@ -118,9 +119,18 @@ no-hosts                     # Don't read /etc/hosts
 ```
 
 ### root@OpenWrt:~# cat /etc/rc.local 
+WARNING: make sure "rc.local" is executable ``chmod +x /etc/rc.local``
 ```
+#!/bin/sh
 # Put your custom commands here that should be executed once
 # the system init finished. By default this file does nothing.
+
+# Auto-start the second instance of dnsmasq
+
+# Wait for LAN IP
+while ! ip addr show br-lan | grep -q "192.168.1.1"; do
+    sleep 1
+done
 
 # Auto-start the second instance of dnsmasq
 dnsmasq --conf-file=/etc/dnsmasq-iot.conf &
