@@ -58,7 +58,6 @@ config switch_vlan
 ```
 
 ### root@OpenWrt:~# cat /etc/config/dhcp
-
 ```
 config dnsmasq
     option domainneeded '1'
@@ -77,25 +76,13 @@ config dnsmasq
     option resolvfile '/tmp/resolv.conf.auto'
     option localservice '1'
 
-# Standard LAN devices: 200–240
+# Standard LAN devices: 192–240
 config dhcp 'lan'
     option interface 'lan'
-    option start '200'
-    option limit '41'           # 200–240 = 41 IPs
+    option start '192'
+    option limit '49'           # 192–240 = 49 IPs
     option leasetime '12h'
     option ignore '0'
-
-# IoT devices tagged by MAC prefix
-config tag 'iot'
-    option mac 'D0:27:00:*:*:*'
-
-# IoT pool: 100–199
-config dhcp 'iot'
-    option interface 'lan'
-    option start '100'
-    option limit '100'          # 100–199 = 100 IPs
-    option leasetime '12h'
-    option tag 'iot'
 
 # Ignore DHCP on WAN
 config dhcp 'wan'
@@ -110,59 +97,38 @@ config odhcpd 'odhcpd'
 ```
 
 ### root@OpenWrt:~# cat /etc/dnsmasq.conf
-
 ```
-cat: can't open '/etc/dnsmasq.sconf': No such file or directory
-root@OpenWrt:~# cat /etc/dnsmasq.conf
-# Change the following lines if you want dnsmasq to serve SRV
-# records.
-# You may add multiple srv-host lines.
-# The fields are <name>,<target>,<port>,<priority>,<weight>
-
-# A SRV record sending LDAP for the example.com domain to
-# ldapserver.example.com port 289
-#srv-host=_ldap._tcp.example.com,ldapserver.example.com,389
-
-# Two SRV records for LDAP, each with different priorities
-#srv-host=_ldap._tcp.example.com,ldapserver.example.com,389,1
-#srv-host=_ldap._tcp.example.com,ldapserver.example.com,389,2
-
-# A SRV record indicating that there is no LDAP server for the domain
-# example.com
-#srv-host=_ldap._tcp.example.com
-
-# The following line shows how to make dnsmasq serve an arbitrary PTR
-# record. This is useful for DNS-SD.
-# The fields are <name>,<target>
-#ptr-record=_http._tcp.dns-sd-services,"New Employee Page._http._tcp.dns-sd-services"
-
-# Change the following lines to enable dnsmasq to serve TXT records.
-# These are used for things like SPF and zeroconf.
-# The fields are <name>,<text>,<text>...
-
-#Example SPF.
-#txt-record=example.com,"v=spf1 a -all"
-
-#Example zeroconf
-#txt-record=_http._tcp.example.com,name=value,paper=A4
-
-# Provide an alias for a "local" DNS name. Note that this _only_ works
-# for targets which are names from DHCP or /etc/hosts. Give host
-# "bert" another name, bertrand
-# The fields are <cname>,<target>
-#cname=bertand,bert
-
-dhcp-range=tag:iot,192.168.1.100,192.168.1.199,12h
-dhcp-range=tag:main,192.168.1.200,192.168.1.240,12h
-
+# Tag devices whose MAC starts with D0:27:00
 dhcp-mac=set:iot,D0:27:00:*:*:*
 
-# Force all DNS for IoT devices to 192.168.1.11
-dhcp-option=tag:iot,6,192.168.1.11
+# Tagged IoT devices get IPs in 100–199
+dhcp-range=tag:iot,192.168.1.128,192.168.1.191,255.255.255.0,12h
+```
+###  cat /etc/dnsmasq-iot.conf 
+```
+# This is the second dnsmasq instance — DNS-only, answers everything with 192.168.1.11
+# No dhcp-range is defined, so this instance does not serve DHCP.
+
+port=1053                    # Avoids conflict with main dnsmasq on port 53
+listen-address=192.168.1.1   # Only listen on the LAN IP
+bind-interfaces              # Bind explicitly to that address
+address=/#/192.168.1.11      # Answer ALL queries with 192.168.1.11
+no-resolv                    # Don't read upstream resolvers (not needed)
+no-hosts                     # Don't read /etc/hosts
 ```
 
-root@OpenWrt:~# cat /etc/firewall.user 
+### root@OpenWrt:~# cat /etc/rc.local 
+```
+# Put your custom commands here that should be executed once
+# the system init finished. By default this file does nothing.
 
+# Auto-start the second instance of dnsmasq
+dnsmasq --conf-file=/etc/dnsmasq-iot.conf &
+
+exit 0
+```
+
+### root@OpenWrt:~# cat /etc/firewall.user 
 ```
 # This file is interpreted as shell script.
 # Put your custom iptables rules here, they will
@@ -172,12 +138,15 @@ root@OpenWrt:~# cat /etc/firewall.user
 # put custom rules into the root chains e.g. INPUT or FORWARD or into the
 # special user chains, e.g. input_wan_rule or postrouting_lan_rule.
 
-# Redirect DNS for Sonoffs (DHCP 100-199)
+# Redirect DNS for Sonoff devices (DHCP 129-191)
+# packets from devices with IP in the range and destination port 53
+# will be redirected to port 1053 where a second istance of dnsmasq is listning
+
 iptables -t nat -A PREROUTING -i br-lan -p udp --dport 53 \
-  -m iprange --src-range 192.168.1.100-192.168.1.199 \
-  -j REDIRECT --to-ports 53
+  -s 192.168.1.128/26 \
+  -j REDIRECT --to-ports 1053
 
 iptables -t nat -A PREROUTING -i br-lan -p tcp --dport 53 \
-  -m iprange --src-range 192.168.1.100-192.168.1.199 \
-  -j REDIRECT --to-ports 53
+  -s 192.168.1.128/26 \
+  -j REDIRECT --to-ports 1053
 ```
