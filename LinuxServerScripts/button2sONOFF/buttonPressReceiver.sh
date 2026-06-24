@@ -12,7 +12,7 @@
 BASE_DIR="/root/Domotica/LinuxServerScripts/button2sONOFF"
 # BUTTONS_CONFIG="$BASE_DIR/config/buttons.config"
 FIFO_PATH="$BASE_DIR/logs/button_fifo"
-DEBOUNCE_TIME=2
+DEBOUNCE_TIME=2000 # in milliseconds
 # LAST_PRESS_DIR="/tmp/button_last_press"
 
 mkdir -p "$LAST_PRESS_DIR"
@@ -71,7 +71,7 @@ handle_port() {
 	    buttID=${buttonID// /} #remove all spaces
 
             # 3. Debounce
-            current_time=$(date +%s)
+            current_time=$(date +%s%3N)
 
 		echo "$buttID =? $last_buttID"
 	    if [[ $buttID == $last_buttID ]]; then

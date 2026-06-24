@@ -108,14 +108,23 @@ async function handleButtonPress(remoteID, buttonN) {
   const buttonID = `${remoteID}${buttonN}`;
   console.log(`dealing button: ${buttonID}`);
 
-  buttonState[buttonID] = buttonState[buttonID] === 'ON' ? 'OFF' : 'ON';
-
   const devices = buttonDevices[buttonID] || [];
   console.log('devices -->', devices.join(' '));
-
-  for (const alias of devices) {
-      await syncDevice(alias, buttonState[buttonID]);
+  
+  if (devices.length > 0) {
+      // Get the first device's current state
+      const firstDevice = devices[0];
+      const firstDeviceState = deviceState[firstDevice];
+      
+      // Set buttonState to the OPPOSITE of the first device's state
+      buttonState[buttonID] = firstDeviceState === 'ON' ? 'OFF' : 'ON';
+      
+      // Sync all devices to the new state
+      for (const alias of devices) {
+          await syncDevice(alias, buttonState[buttonID]);
+      }
   }
+
 }
 
 /* ================= CONFIG LOADING ================= */

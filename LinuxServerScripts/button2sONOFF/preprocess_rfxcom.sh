@@ -81,7 +81,7 @@ if [[ ! "$SWITCH_ID" =~ ^[0-9A-Fa-f]+$ ]]; then
 fi
 
 # Validate button type is "010" or "110"
-if [[ ! "$BUTTON_TYPE" =~ ^(010|110|100)$ ]]; then
+if [[ ! "$BUTTON_TYPE" =~ ^(010|110|100|000)$ ]]; then
     echo "INVALID"
     exit 1
 fi
