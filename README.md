@@ -97,6 +97,32 @@ Each SONOFF-RF device connects to the internet via WiFi and establishes a link w
              |                                                                           ^
              | WiFi                                                                      |
              v                                                                           |
+       [Linux Server]                                                  |
+             |                                                                           |  Cloud communication
+             | USB (serial)                                                              |
+             v                                                                           |
+   [Arduino + RF-TX]                                                                     |
+             |                                                                           |
+             | RF codes (standard)                                                       v
+             |                                                                        .-~~~-.
+             v                                                                     .-~~      ~~-.
+[SONOFF-RF Switch] <--WiFi-----------------------------WiFi--> [Home Router] <--> (   Internet   )
+                                                                                   `-. ~~~~~~~ .-'
+```
+The latest version features an eWeLink-proxy that enables local Wi-Fi control of SONOFF devices. 
+
+When a SONOFF device requests the IP address for the eWeLink Cloud Server (e.g., eu-disp.coolkit.cc), the local DNS server intercepts this by replying with the IP address of the local eWeLink-Proxy. This proxy provides a REST API to control each device locally over Wi-Fi while seamlessly forwarding data to and from the cloud, preserving full smartphone app functionality. 
+
+To implement this setup, I am using an [OpenWRT Router to handle the required network configurations](https://github.com/mpalitto/Domotica/tree/master/eWeLink-Proxy) .
+```
+   [LWRF Mood Controller]                                                         [Smartphone App (eWelink)]
+             |                                                                           |
+             | RF codes (Lightwave proprietary)                                          |  Cloud communication
+             v                                                                           v
+    [ESP8266 + RF-RX]                                                               [SONOFF Cloud Server (eu-disp.coolkit.cc)]
+             |                                                                           ^
+             | WiFi                                                                      |
+             v                                                                           |
        [Linux Server] <-------LAN Socket                                                 |
              |                         |                                                 |  Cloud communication
              | USB (serial)            |                                                 |
@@ -106,7 +132,6 @@ Each SONOFF-RF device connects to the internet via WiFi and establishes a link w
              | RF codes (standard)     |                                                 v
              |                         |                                              .-~~~-.
              v                         v                                           .-~~      ~~-.
-[SONOFF-RF Switch] <--WiFi--> [Linux eWelink-proxy] <--WiFi--> [Home Router] <--> (   Internet   )
+[SONOFF-RF Switch] <--WiFi--> [Linux eWelink-proxy] <--WiFi--> [OpenWRT Router] <--> (   Internet   )
                                                                                    `-. ~~~~~~~ .-'
 ```
-The current version has acquired a eWelink-proxy which gives a local control of sONOFF devices though WIFI
