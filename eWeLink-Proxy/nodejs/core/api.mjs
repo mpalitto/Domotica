@@ -25,12 +25,14 @@ export function createApiHandler(saveAliases) {
       const list = Object.entries(sONOFF).map(([id, dev]) => {
         // Check actual WebSocket state instead of relying on flag
         // WebSocket.readyState: 0=CONNECTING, 1=OPEN, 2=CLOSING, 3=CLOSED
-        const isActuallyOnline = !!(dev.ws && dev.ws.readyState === 1);
+        const isLocalOnline = !!(dev.ws && dev.ws.readyState === 1);
+        const isCloudConnected = !!(dev.conn?.cloudApiKey);
         
         return {
           deviceid: id,
           alias: dev.alias || null,
-          online: isActuallyOnline,  // ← Use real-time WebSocket state
+          localOnline: isLocalOnline,
+          cloudOnline: isCloudConnected,  // ← Use real-time WebSocket state
           state: dev.state || null,
           params: dev.params || { switch: 'off' },
           fwVersion: dev.params?.fwVersion || null,
@@ -51,7 +53,7 @@ export function createApiHandler(saveAliases) {
 
       if (!device || !device.ws || device.ws.readyState !== device.ws.OPEN) {
         res.statusCode = 404;
-        res.end(JSON.stringify({ error: 'Device not online' }));
+        res.end(JSON.stringify({ error: 'Device not locally online' }));
         return;
       }
 

@@ -101,7 +101,7 @@ sonoff() {
     
     # Validate filter
     case "$LIST_FILTER" in
-      all|online|offline|on|off)
+      all|online|offline|on|off|cloud)
         ;;
       *)
         echo "Error: Unknown list filter '$LIST_FILTER'"
@@ -158,14 +158,14 @@ sonoff() {
       [
         .deviceid,
         (.alias // "-"),
-        (.online | tostring),
+        (.localOnline | tostring),
         (.state // "-"),
         (.params.switch // "-"),
         (if .rssi then (.rssi | tostring) else "-" end),
         (.fwVersion // "-"),
         (.IP // "0.0.0.0"),
         (if $cloud == "true" then
-           (if .cloudConnected | not then "NO" else "YES" end)
+           (if .cloudOnline | not then "NO" else "YES" end)
          else empty end)
       ] | @tsv
     ' | while IFS=$'\t' read -r deviceid alias online state switch rssi fw ip cloud_status; do
