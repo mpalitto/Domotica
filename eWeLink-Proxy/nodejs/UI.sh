@@ -121,12 +121,12 @@ sonoff() {
     # Print header
     if $CLOUD_COLUMN; then
       printf "%-12s | %-18s | %-6s | %-7s | %-6s | %-5s | %-7s | %-7s | %-5s\n" \
-             "Device ID" "Alias" "Online" "State" "Switch" "RSSI" "FW" "IP" "CLOUD"
+             "Device ID" "Alias" "LOCAL" "State" "Switch" "RSSI" "FW" "IP" "CLOUD"
       printf "%-12s-+-%-18s-+-%-6s-+-%-7s-+-%-6s-+-%-5s-+-%-7s-+-%-7s-+-%-5s\n" \
              "------------" "------------------" "------" "-------" "------" "-----" "-------" "-------" "-----"
     else
       printf "%-12s | %-18s | %-6s | %-7s | %-6s | %-5s | %-7s | %-7s\n" \
-             "Device ID" "Alias" "Online" "State" "Switch" "RSSI" "FW" "IP"
+             "Device ID" "Alias" "LOCAL" "State" "Switch" "RSSI" "FW" "IP"
       printf "%-12s-+-%-18s-+-%-6s-+-%-7s-+-%-6s-+-%-5s-+-%-7s-+-%-7s\n" \
              "------------" "------------------" "------" "-------" "------" "-----" "-------" "-------"
     fi
@@ -138,16 +138,25 @@ sonoff() {
         JQ_FILTER="."
         ;;
       online)
-        JQ_FILTER="select(.online == true)"
+        JQ_FILTER="select(.localOnline == true)"
         ;;
       offline)
-        JQ_FILTER="select(.online == false or .online == null)"
+        JQ_FILTER="select(.localOnline == false or .localOnline == null)"
         ;;
       on)
-        JQ_FILTER="select(.online == true and .params.switch == \"on\")"
+        JQ_FILTER="select(.localOnline == true and .params.switch == \"on\")"
         ;;
       off)
-        JQ_FILTER="select(.online == true and .params.switch == \"off\")"
+        JQ_FILTER="select(.localOnline == true and .params.switch == \"off\")"
+      ;;
+      cloud)
+        JQ_FILTER="select(.cloudOnline == true)"
+      ;;
+      cloud)
+        JQ_FILTER="select(.cloudOnline == true)"
+      ;;
+      cloud)
+        JQ_FILTER="select(.cloudOnline == true)"
         ;;
     esac
 
