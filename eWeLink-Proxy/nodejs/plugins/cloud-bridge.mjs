@@ -18,6 +18,7 @@ const cloudConnections = new Map();
 const heartbeatTimers = new Map();
 const registrationTimeouts = new Map();
 const pendingSequences = new Map(); // deviceID → original cloud sequence
+const reconnectState = new Map(); // deviceID → { count, deviceApiKey, model, romVersion, timer }
 
 function getCloudServer(deviceID, deviceApiKey, model, romVersion, onSuccess, onError) {
   const ts = Math.floor(Date.now() / 1000);
@@ -75,13 +76,18 @@ function connectToCloud(deviceID, deviceApiKey, model, romVersion) {
     deviceApiKey,
     model,
     romVersion,
-    (url) => openWebSocket(deviceID, url, deviceApiKey),
-    (err) => console.log(`[CLOUD] Dispatch failed: ${err}`)
+    (url) => openWebSocket(deviceID, url, deviceApiKey, model, romVersion),
+    (err) => {
+      console.log(`[CLOUD] Dispatch failed: ${err}`);
+      scheduleReconnect(deviceID);
+    }
   );
 }
 
-function openWebSocket(deviceID, cloudUrl, deviceApiKey) {
+function openWebSocket(deviceID, cloudUrl, deviceApiKey, model, romVersion) {
   if (cloudConnections.has(deviceID)) return;
+
+  reconnectState.set(deviceID, { count: 0, deviceApiKey, model, romVersion });
 
   const ws = new WebSocket(cloudUrl, { rejectUnauthorized: false });
   ws.registrationComplete = false;
@@ -118,6 +124,9 @@ function openWebSocket(deviceID, cloudUrl, deviceApiKey) {
       if (cloudApiKey !== deviceApiKey) {
         sONOFF[deviceID].conn.cloudApiKey = cloudApiKey;
       }
+
+      const rState = reconnectState.get(deviceID);
+      if (rState) rState.count = 0;
 
       console.log(`[CLOUD] ✓ Registered ${deviceID}`);
 
@@ -187,10 +196,41 @@ function openWebSocket(deviceID, cloudUrl, deviceApiKey) {
   ws.on('close', () => {
     console.log(`[CLOUD] Connection closed ${deviceID}`);
     cleanup(deviceID);
+    scheduleReconnect(deviceID);
   });
 
   ws.on('error', (err) => console.log(`[CLOUD] Error: ${err.message}`));
 }
+
+
+function scheduleReconnect(deviceID) {
+  const state = reconnectState.get(deviceID);
+  if (!state) return;
+  if (state.count >= CLOUD_CONFIG.MAX_RECONNECT_ATTEMPTS) {
+    console.log('[CLOUD] Max reconnect attempts reached for ' + deviceID);
+    reconnectState.delete(deviceID);
+    return;
+  }
+  state.count++;
+  const delay = Math.min(
+    CLOUD_CONFIG.RECONNECT_BASE_DELAY_MS * Math.pow(2, state.count - 1),
+    CLOUD_CONFIG.RECONNECT_MAX_DELAY_MS
+  );
+  console.log('[CLOUD] Reconnecting ' + deviceID + ' in ' + delay + 'ms (attempt ' + state.count + ')');
+  const timer = setTimeout(() => {
+    connectToCloud(deviceID, state.deviceApiKey, state.model, state.romVersion);
+  }, delay);
+  reconnectState.set(deviceID, { ...state, timer });
+}
+
+function cancelReconnect(deviceID) {
+  const state = reconnectState.get(deviceID);
+  if (state && state.timer) {
+    clearTimeout(state.timer);
+  }
+  reconnectState.delete(deviceID);
+}
+
 
 function cleanup(deviceID) {
   clearTimeout(registrationTimeouts.get(deviceID));
@@ -250,6 +290,7 @@ export default {
     });
 
     events.on('device:disconnected', ({ deviceID }) => {
+      cancelReconnect(deviceID);
       const ws = cloudConnections.get(deviceID);
       if (ws) ws.close();
       cleanup(deviceID);

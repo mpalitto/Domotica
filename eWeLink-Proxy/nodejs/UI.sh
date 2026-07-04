@@ -6,7 +6,7 @@
 
 sonoff() {
   local API_URL="http://localhost:3000"
-  local PLUGIN_FILE="./plugins/cloud-bridge.mjs"  # Adjust if needed
+  local PLUGIN_FILE="./nodejs/plugins/cloud-bridge.mjs"  # Adjust if needed
 
   print_help() {
     echo "Usage: sonoff <command> [arguments]"
