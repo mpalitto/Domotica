@@ -3,6 +3,22 @@
 * LinuxServerScripts ---> code implementing the main management logic, receiving button pressed codes and sending the sONOFF commands
 * ewelink-proxy --------> code for gaining sONOFF devices local control through WIFI
 * Arduino --------------> Arduino code for the RF-Tx module, and the ESP8266 RF-Rx module
+
+## Setup
+`node_modules/` is **not** committed to this repository.
+
+* **Web UI / house-map controller** (`LinuxServerScripts/iot-controller`) is the only component with npm dependencies, namely `express` and `body-parser`:
+
+```bash
+cd LinuxServerScripts/iot-controller && npm ci
+```
+
+  Launch it with `LinuxServerScripts/startIoT-WEBui.sh`, which expects Node on `PATH` via nvm. On a host that has no Node yet, run `LinuxServerScripts/iot-controller/node+npm.sh` first.
+
+* **eWeLink-Proxy** (`eWeLink-Proxy/nodejs`) ships no `package.json` and uses only Node built-ins, so there is nothing to install there: it just needs Node plus its launcher `start-proxy.sh`, which is what the `ewelink-proxy.service` systemd unit runs.
+
+`package-lock.json` is still on `lockfileVersion: 1`, so the first `npm ci` rewrites it into the current format; that rewrite is safe to keep or to discard.
+
 ## System Architecture
 This system architecture represents a multi-level communication setup designed to control lights wirelessly using remote controllers, RF signals, ESP8266 modules, Wi-Fi, and a central Linux server.
 
