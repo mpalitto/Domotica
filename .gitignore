@@ -10,8 +10,9 @@
 
 # Logs
 *.log
-logs/
+logs/*
 *.log.*
+*.out
 
 # Monitoring data
 eWeLink-Proxy/sONOFFcapture/
@@ -21,7 +22,9 @@ device_state.db
 LinuxServerScripts/.*
 
 # tmp files
-LinuxServerScripts/tmp-files/
+LinuxServerScripts/tmp-files/*
+# keep placeholder files trackable inside ignored dirs
+!LinuxServerScripts/**/.gitkeep
 
 # Environment and secrets
 .env
@@ -50,17 +53,13 @@ LinuxServerScripts/.*.log*
 eWeLink-Proxy/nodejs/logs/
 eWeLink-Proxy/nodejs/.*.log*
 
-# Ignore temporary file
-<<<<<<< HEAD
-LinuxServerScripts/tmp-files
+# Ignore temporary files
+LinuxServerScripts/tmp/
+eWeLink-Proxy/nodejs/tmp/
+eWeLink-Proxy/nodejs/backups/
 
 # Ignore secrets files
 LinuxServerScripts/cert.*
-=======
-LinuxServerScripts/tmp
-eWeLink-Proxy/nodejs/tmp/
-eWeLink-Proxy/nodejs/backups/
->>>>>>> a67148debc49f077eb27b27e6795afab769721ed
 
 # Windows image file caches
 Thumbs.db
