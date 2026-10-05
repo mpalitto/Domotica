@@ -136,7 +136,39 @@ else
   note error "ewelink-proxy.service down on $PROXY"
 fi
 
-# ---- 4. disk / RAM headroom --------------------------------------------
+# ---- 4. listening TCP ports ---------------------------------------------
+# Complements section 2: a process can be alive with its socket gone (hung
+# event loop, failed bind), which pgrep alone will not catch.
+# One SSH round trip per host, then match the ports locally.
+#
+# 1212 (PIR) is deliberately NOT checked: that project is retired and is not
+# started at boot (see rc.local on .77). Checking it would report an error
+# every morning for something never meant to run.
+check_ports() { # check_ports <host> <port:service> ...
+  local host="$1"; shift
+  local out
+  out=$(ssh_try "root@$host" "ss -tln 2>/dev/null")
+  if [ -z "$out" ]; then
+    note error "could not read listening ports on $host"
+    return
+  fi
+  local pair port svc
+  for pair in "$@"; do
+    port="${pair%%:*}"; svc="${pair#*:}"
+    if echo "$out" | grep -q ":${port} "; then
+      mark PASS "port $port ($svc) listening on $host"
+    else
+      note error "port $port ($svc) NOT listening on $host"
+    fi
+  done
+}
+
+check_ports "$SRV" \
+  "1234:RF receivers" "5678:KINETIC receivers" "7777:ManagerLayer" \
+  "12345:Current sensor" "12346:Display"
+check_ports "$PROXY" "3000:eWeLink API"
+
+# ---- 5. disk / RAM headroom --------------------------------------------
 for ip in "$SRV" "$PROXY"; do
   disk=$(ssh_try "root@${ip}" "df -P / | awk 'NR==2{print \$5}' | tr -d '%'")
   mem=$(ssh_try "root@${ip}" "free | awk '/^Mem:/{print int(\$3/\$2*100)}'" 2>/dev/null)
@@ -152,7 +184,7 @@ for ip in "$SRV" "$PROXY"; do
   fi
 done
 
-# ---- 5. SONOFF device connectivity -------------------------------------
+# ---- 6. SONOFF device connectivity -------------------------------------
 # fully dead = cloud AND local off -> error
 # local off but cloud on = WiFi radio dead, RF fallback active -> warning
 stats=$(ssh_try "root@${PROXY}" "curl -s http://localhost:3000/devices 2>/dev/null" | python3 "$SCRIPT_DIR/device_state.py" 2>/dev/null)

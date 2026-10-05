@@ -27,8 +27,9 @@
 
 - **Connectivity** — pings gateway (`.1`), eWeLink proxy (`.11`), Linux server (`.77`)
 - **Listening ports** — verifies expected TCP listeners on each server:
-  - `.77`: 1212 (PIR), 1234 (RF receivers), 5678 (KINETIC), 7777 (ManagerLayer), 12345 (Current sensor), 12346 (Display)
+  - `.77`: 1234 (RF), 5678 (KINETIC), 7777 (ManagerLayer), 12345 (Current sensor), 12346 (Display)
   - `.11`: 3000 (eWeLink API)
+  - 1212 (PIR) is intentionally not checked — that project is retired and is not started at boot
 - **Screen sessions** — lists running `screen` sessions on `.77`
 - **Processes** — shows PIDs of core daemons (managerLayer, buttonPressReceiver, arduino433tx, displayServer, WEBserver)
 - **Device States** — last 10 `STATE_UPDATE` events from managerLayer
@@ -38,6 +39,7 @@
 ## Monitoring — `macos/watchdog.sh`
 
 - Silent-until-broken health check; `--verbose` for every test, `--json` for one machine-readable line. Exit `0` healthy, `1` on errors.
+- Covers: node reachability, `.77` core processes, `ewelink-proxy.service`, listening TCP ports (one SSH round trip per host, then matched locally), disk/RAM headroom, and SONOFF device state. The port check complements the process check — it catches a process that is alive but no longer listening.
 - **Scheduled by hermes, not system cron.** The Mac crontab is empty; there is no LaunchAgent. Jobs live in `~/.hermes/cron/jobs.json`:
   - `Domotica Morning Health Report` — `0 8 * * *` → `cd /Users/matteo/Projects/APPs/domotica/macos && ./watchdog.sh`
   - `Domotica Extended Health Report` — on-demand → `./watchdog.sh --verbose`

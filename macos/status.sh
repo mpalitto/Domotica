@@ -40,7 +40,9 @@ check_ports() {
 
   local ports_to_check
   if echo "$host" | grep -q "192.168.1.77"; then
-    ports_to_check="1212 1234 5678 7777 12345 12346"
+    # 1212 (PIR) intentionally omitted: that project is retired and is not
+    # started at boot on .77, so it would always show as NOT LISTENING.
+    ports_to_check="1234 5678 7777 12345 12346"
   else
     ports_to_check="3000"
   fi
@@ -50,7 +52,6 @@ check_ports() {
   for port in $ports_to_check; do
     local svc
     case "$port" in
-      1212)  svc="PIR sensors" ;;
       1234)  svc="RF receivers" ;;
       5678)  svc="KINETIC receivers" ;;
       7777)  svc="ManagerLayer" ;;

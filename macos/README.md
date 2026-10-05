@@ -1,6 +1,6 @@
 # Domotica
 
-Home automation system — controls SONOFF RF outlets via wall switches, web UI, and PIR sensors.
+Home automation system — controls SONOFF RF outlets via wall switches and a web UI.
 
 ## Architecture
 
@@ -14,7 +14,12 @@ Home automation system — controls SONOFF RF outlets via wall switches, web UI,
 | **ESP32 KINETIC Receivers** | WiFi → port 5678 | Capture KINETIC wall switch presses |
 | **NodeMCU Current Sensor** | WiFi → port 12345 | Monitors current draw, triggers alarm on threshold |
 | **Display Device** | TCP → port 12346 | Remote display receiving status updates |
-| **PIR Motion Sensors** | TCP → port 1212 | Motion-triggered light control |
+
+> **PIR motion sensors (port 1212) are retired.** The code lives in
+> `LinuxServerScripts/miscellaneous/PIRsocketServer.js` but is not started at
+> boot (`startPIR.sh` is commented out in `.77`'s `rc.local`), so the port is
+> not expected to be listening and is deliberately excluded from the health
+> checks.
 
 ## Control Flow
 
@@ -68,8 +73,9 @@ Override with `EWELINK_PROXY_URL`, `EWELINK_PROXY_HOST`, or
 
 ## Monitoring — `watchdog.sh`
 
-Runs the same checks as `status.sh` but stays **silent unless something is
-broken**, so it can be run unattended:
+Stays **silent unless something is broken**, so it can be run unattended.
+Unlike `status.sh` it asserts only, and its result is deduplicated against
+`$WATCH_STATE_FILE` so you are told once per problem rather than every run:
 
 ```bash
 ./watchdog.sh           # silent when healthy; prints only bad news
@@ -77,7 +83,12 @@ broken**, so it can be run unattended:
 ./watchdog.sh --json    # one machine-readable line
 ```
 
-Exit code is `0` when healthy, `1` when there were errors.
+Exit code is `0` when there were no errors, `1` when there were.
+
+Checks: node reachability; `.77` core processes; `ewelink-proxy.service`;
+listening TCP ports on `.77` and `.11`; disk and RAM headroom; SONOFF device
+state. The port check complements the process check — it catches a process
+that is alive but no longer holding its socket.
 
 Scheduling is handled by **hermes** (`~/.hermes/cron/jobs.json`), not system
 cron — there are two jobs, "Domotica Morning Health Report" (daily 08:00,
