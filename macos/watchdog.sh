@@ -5,19 +5,27 @@
 #   - "Domotica Morning Health Report"   0 8 * * *  -> ./watchdog.sh
 #   - "Domotica Extended Health Report"  on-demand  -> ./watchdog.sh --verbose
 #
-# This script only PRINTS to stdout; hermes is what sends the Telegram
-# message. Prints only when there is BAD NEWS (errors > 0). Does NOT report
-# recovery or healthy transitions.
+# This script only PRINTS to stdout; hermes is what sends the Telegram message.
 #
-# State is persisted in WATCH_STATE_FILE so it can spam you once per problem,
-# then go quiet until it changes again.
+# Alerting rules:
+#   - Bad news means errors >= 1 (level=error) OR warnings >= 1 (level=warning).
+#     Both alert: warnings are NOT silently tolerated.
+#   - A run alerts only when its level DIFFERS from the one recorded in
+#     STATE_FILE, so a persistent problem is reported once, not every run.
+#   - A healthy run prints nothing, and a return to healthy is never
+#     announced. Recovery is deliberately not reported.
+#
+# Checks: node reachability; .77 core processes; ewelink-proxy.service;
+# listening TCP ports on .77 and .11; disk and RAM headroom; SONOFF device
+# state (fully-off = error, local-off but cloud-on = warning, RF fallback).
 #
 # Extended / full report:
 #   ./watchdog.sh --verbose      # print EVERY test (pass + fail) with a
 #                                # per-test summary; counts still reported.
 #   ./watchdog.sh --json         # machine-readable single line for callers.
 #
-# Exit codes: 0 = healthy (nothing printed), 1 = had errors (bad news printed).
+# Exit codes: 0 = no errors -- this INCLUDES warning-only runs, which do
+# print; 1 = at least one error.
 
 set -u
 
@@ -29,7 +37,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GW="192.168.1.1"; SRV="192.168.1.77"; PROXY="192.168.1.11"; PVE="192.168.1.33"
 STATE_FILE="${WATCH_STATE_FILE:-/Users/matteo/.local/state/domotica-watchdog.state}"
 MARKER="${MARKER:-}"   # optional: "error" | "warning" | "ok" to force a level
-ALERT_LEVEL="${ALERT_LEVEL:-error}"   # only alert when errors>=ALERT_LEVEL
 VERBOSE=0; AS_JSON=0
 for a in "$@"; do
   case "$a" in
@@ -40,7 +47,6 @@ for a in "$@"; do
 done
 
 SSH="ssh -o BatchMode=yes -o ConnectTimeout=8"
-WARN_THRESHOLD="${WARN_THRESHOLD:-3}"  # warnings>=this => still no alert, but log
 
 # ---- helpers ------------------------------------------------------------
 errors=0; warnings=0
@@ -209,8 +215,9 @@ level="ok"
 # ---- persist last state, decide whether to alert -----------------------
 last_level="ok"; [ -f "$STATE_FILE" ] && last_level="$(cat "$STATE_FILE" 2>/dev/null)"
 
-# Only alert on bad news, and only when the situation is NEW or worse
-# than what we last told the user about.
+# Alert on bad news, but only when the level CHANGED since the last run.
+# Note this fires on any change, including an improvement (error -> warning);
+# a return to ok stays silent by design.
 should_alert=0
 if [ "$level" != "ok" ]; then
   if [ "$last_level" != "$level" ] || [ -n "$MARKER" ]; then
