@@ -79,4 +79,6 @@ buttons code --> target devices(identified by alias)
 
 sONOFF.config
 alias --> RF code, deviceID, description
+
+Note: this file is now also read by the IoT house-map WEB UI (`LinuxServerScripts/iot-controller/WEBserver-port3000.js`) to join RF codes to deviceIDs for live state. Edits here affect both managerLayer and the WEB UI. Lights with an empty deviceID have no live state in the UI.
 ```

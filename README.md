@@ -13,7 +13,8 @@
 cd LinuxServerScripts/iot-controller && npm ci
 ```
 
-  Launch it with `LinuxServerScripts/startIoT-WEBui.sh`, which expects Node on `PATH` via nvm. On a host that has no Node yet, run `LinuxServerScripts/iot-controller/node+npm.sh` first.
+  Launch it with `LinuxServerScripts/startIoT-WEBui.sh`, which expects Node on `PATH` via nvm. On a host that has no Node yet, run `LinuxServerScripts/iot-controller/node+npm.sh` first.  
+  The UI shows live sonoff state from the eWeLink proxy (`192.168.1.11:3000/devices`) pushed over SSE. RF-only lights (no deviceID in `button2sONOFF/config/sONOFF.config`) have no live state. Environment variables: `IoTserverScripts`, `EWELINK_PROXY_HOST`, `EWELINK_PROXY_PORT`, `STATE_POLL_MS`, `PORT`.
 
 * **eWeLink-Proxy** (`eWeLink-Proxy/nodejs`) ships no `package.json` and uses only Node built-ins, so there is nothing to install there: it just needs Node plus its launcher `start-proxy.sh`, which is what the `ewelink-proxy.service` systemd unit runs.
 

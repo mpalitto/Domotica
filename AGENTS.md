@@ -1,5 +1,16 @@
 # Agent Notes
 
+## IoT Controller (house-map WEB UI) — `.77:3000`
+
+- Runs on `192.168.1.77:3000` inside the `IoT-WEBui` `screen` session, launched by `LinuxServerScripts/startIoT-WEBui.sh` (idempotent: kills+recreates the session).
+- Logic lives in `LinuxServerScripts/iot-controller/WEBserver-port3000.js` (Node + `express`/`body-parser`). The UI is `iot-controller/index.html`.
+- **Live state**: polls the eWeLink proxy at `192.168.1.11:3000/devices` every `STATE_POLL_MS` (default `2000ms`) and pushes diffs over SSE to `/api/states/stream`. Events fire only when the state signature changes. Clients get a full snapshot on connect.
+- **Key mapping**: UI uses **RF codes**, proxy uses **burned-in deviceIDs** — joined by `button2sONOFF/config/sONOFF.config` (`deviceID : alias : RFcode : description`). Lights with an empty `deviceID` have **no live state** (dashed ring) and are optimistic-only.
+- **Catalogue**: `sONOFF.list` is read from `button2sONOFF/config/sONOFF.list` (not `$IoTserverScripts/sONOFF.list`). The parser accepts `V s:CODE #name - description` (space after `#` optional). Both `sONOFF.list` and `sONOFF.config` are watched by mtime and reloaded automatically.
+- **Modes**: `OPERATIVO` → live wins over stored; `CORREGGI` → stored wins (layout editing without live state fighting). Toggles are optimistic and reconciled by the SSE push.
+- **Endpoints/env**: `/api/states/stream`, `/api/states`, `/api/config`, `/api/light/toggle` (hex RF codes only), `/api/house-map`, `/api/room/:id`. Overridable: `IoTserverScripts`, `EWELINK_PROXY_HOST/PORT`, `STATE_POLL_MS`, `PORT`.
+- **Resilient**: if proxy is unreachable it logs once and keeps last known state; an empty `/devices` is treated as "still starting up" not "all off". Restart with `export IoTserverScripts=/root/Domotica/LinuxServerScripts; $IoTserverScripts/startIoT-WEBui.sh`.
+
 ## Remote Access
 
 - Password-less SSH as `root@192.168.1.77` (key: `~/.ssh/id_ed25519`)
