@@ -325,6 +325,29 @@
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
         }
 
+        /* No live state reported by the proxy (RF-only device): dashed ring */
+        .light-bulb.untracked .light-circle {
+            border-style: dashed;
+            opacity: 0.5;
+        }
+
+        .live-indicator {
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-weight: bold;
+            font-size: 12px;
+        }
+
+        .live-indicator.connected {
+            background: rgba(40, 167, 69, 0.25);
+            color: #6fdd8b;
+        }
+
+        .live-indicator.disconnected {
+            background: rgba(220, 53, 69, 0.25);
+            color: #ff8f9a;
+        }
+
         .light-label {
             position: absolute;
             bottom: -20px;
@@ -729,6 +752,28 @@
                     console.error('Error toggling light:', error);
                     return { success: false };
                 }
+            },
+
+            // Live sonoff switch state. The server polls the eWeLink proxy and
+            // pushes a full snapshot over SSE whenever anything changes, so a
+            // physical button press shows up here without reloading the page.
+            // EventSource reconnects on its own if the stream drops.
+            streamStates({ onStates, onStatus }) {
+                const source = new EventSource('/api/states/stream');
+
+                source.addEventListener('states', event => {
+                    const snapshot = JSON.parse(event.data);
+                    const states = {};
+                    Object.keys(snapshot.codes || {}).forEach(code => {
+                        states[code] = snapshot.codes[code] === 'ON';
+                    });
+                    onStates(states, snapshot);
+                });
+
+                source.onopen = () => onStatus && onStatus(true);
+                source.onerror = () => onStatus && onStatus(false);
+
+                return source;
             }
         };
 
@@ -960,7 +1005,7 @@
         }
 
         // Light component
-        function Light({ light, onToggle, onPositionChange, onRemove, editMode }) {
+        function Light({ light, state, tracked, onToggle, onPositionChange, onRemove, editMode }) {
             const [isDragging, setIsDragging] = useState(false);
             const dragStart = useRef({ x: 0, y: 0, lightX: 0, lightY: 0 });
 
@@ -1012,12 +1057,13 @@
 
             return (
                 <div
-                    className={`light-bulb ${light.state ? 'on' : 'off'}`}
+                    className={`light-bulb ${state ? 'on' : 'off'} ${tracked ? '' : 'untracked'}`}
                     style={{
                         left: light.x,
                         top: light.y,
                     }}
                     onMouseDown={handleMouseDown}
+                    title={tracked ? light.name : `${light.name} (no live state: RF-only device)`}
                 >
                     <div className="light-circle"></div>
                     <span className="light-icon">💡</span>
@@ -1036,7 +1082,7 @@
         }
 
         // Room Editor Modal
-        function RoomEditor({ room, onClose, availableLights, onSave }) {
+        function RoomEditor({ room, onClose, availableLights, onSave, liveStates }) {
             const [editMode, setEditMode] = useState(false);
             const [operatingMode, setOperatingMode] = useState('OPERATIVO'); // 'OPERATIVO' or 'CORREGGI'
             const [lights, setLights] = useState(room.lights || []);
@@ -1047,6 +1093,17 @@
             );
             const canvasRef = useRef(null);
             const wrapperRef = useRef(null);
+
+            // In OPERATIVO mode the live sonoff state wins over the stored value, so
+            // the map follows the real switches. Lights the proxy does not report
+            // (RF-only devices) fall back to the stored value.
+            // In CORREGGI mode the stored value is used, so the layout can be
+            // adjusted freely without the real state overwriting it.
+            const isTracked = light => Object.prototype.hasOwnProperty.call(liveStates, light.code);
+            const liveStateFor = light =>
+                operatingMode === 'OPERATIVO' && isTracked(light)
+                    ? liveStates[light.code]
+                    : light.state;
 
             // Calculate zoom to fit
             useEffect(() => {
@@ -1188,20 +1245,19 @@
                 const light = lights.find(l => l.id === lightId);
                 if (!light) return;
 
+                const next = !liveStateFor(light);
+
                 // In OPERATIVO mode, send command to server
                 if (operatingMode === 'OPERATIVO') {
                     const result = await API.toggleLight(light.code);
-                    if (result.success !== false) {
-                        setLights(lights.map(l => 
-                            l.id === lightId ? { ...l, state: !l.state } : l
-                        ));
-                    }
-                } else {
-                    // In CORREGGI mode, only toggle locally without sending to server
-                    setLights(lights.map(l => 
-                        l.id === lightId ? { ...l, state: !l.state } : l
-                    ));
+                    if (result.success === false) return;
                 }
+
+                // Optimistic update: the toggle is instant, and the live state
+                // pushed by the server reconciles it a moment later.
+                setLights(lights.map(l => 
+                    l.id === lightId ? { ...l, state: next } : l
+                ));
             };
 
             const handleSave = async () => {
@@ -1285,6 +1341,8 @@
                                         <Light
                                             key={light.id}
                                             light={light}
+                                            state={liveStateFor(light)}
+                                            tracked={isTracked(light)}
                                             onToggle={handleToggleLight}
                                             onPositionChange={handleLightPositionChange}
                                             onRemove={handleLightRemove}
@@ -1361,11 +1419,24 @@
             const [editMode, setEditMode] = useState(true);
             const [selectedRoom, setSelectedRoom] = useState(null);
             const [status, setStatus] = useState(null);
+            const [liveStates, setLiveStates] = useState({});
+            const [liveConnected, setLiveConnected] = useState(false);
             const canvasRef = useRef(null);
             const wrapperRef = useRef(null);
 
             useEffect(() => {
                 loadData();
+            }, []);
+
+            // Subscribe to live sonoff state. Replaces the whole map whenever the
+            // server reports a change, so a press on a physical switch, in the
+            // eWeLink app or on another controller is reflected here.
+            useEffect(() => {
+                const source = API.streamStates({
+                    onStates: states => setLiveStates(states),
+                    onStatus: connected => setLiveConnected(connected)
+                });
+                return () => source.close();
             }, []);
 
             const loadData = async () => {
@@ -1518,6 +1589,9 @@
                             <div className="mode-indicator" style={{ marginLeft: 'auto' }}>
                                 {editMode ? '✏️ Edit House Layout' : '👁️ Click Room to View'}
                             </div>
+                            <div className={`live-indicator ${liveConnected ? 'connected' : 'disconnected'}`}>
+                                {liveConnected ? '🟢 LIVE' : '⚪ NO LIVE DATA'}
+                            </div>
                         </div>
                         <div 
                             ref={wrapperRef}
@@ -1552,6 +1626,7 @@
                     {selectedRoom && (
                         <RoomEditor
                             room={selectedRoom}
+                            liveStates={liveStates}
                             onClose={() => setSelectedRoom(null)}
                             availableLights={selectedRoomLights}
                             onSave={handleRoomSave}
