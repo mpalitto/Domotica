@@ -44,21 +44,46 @@ export default {
         reconnectAttempts = 0;
         clearTimeout(reconnectTimer);
         console.log(`[EVENT SENDER] Connected to ${HOST}:${PORT}`);
-	// on connection with managerLayer send all devices state and connection
+	// on connection with managerLayer send all devices state (from the
+	// recorded params.switch, including offline / RF-fallback devices) so a
+	// managerLayer restart re-syncs its logical state, plus CONNECTED flags
+	// for the devices that are actually reachable.
 	Object.entries(sONOFF).forEach(([deviceID, device]) => {
 	  console.log(`device: ${deviceID} is ${device.online} online`);
 	  if (device.online) {
-            sendToTcp(`CONNECTED ${deviceID}`);
-            console.log(`[EVENT SENDER] CONNECTED ${deviceID}`);
-            sendToTcp(`STATE_UPDATE ${deviceID} ${device.state}`);
-            console.log(`[EVENT SENDER] STATE_UPDATE ${deviceID} ${device.state}`);
-          }
-        });
+	    sendToTcp(`CONNECTED ${deviceID}`);
+	    console.log(`[EVENT SENDER] CONNECTED ${deviceID}`);
+	  }
+	  const sw = device.params?.switch === 'on' ? 'ON'
+	           : device.params?.switch === 'off' ? 'OFF' : null;
+	  if (sw) {
+	    sendToTcp(`STATE_UPDATE ${deviceID} ${sw}`);
+	    console.log(`[EVENT SENDER] STATE_UPDATE ${deviceID} ${sw}`);
+	  }
+	});
       });
 
       client.on('data', (data) => {
-        // Optional: if managerLayer ever wants to send something back
-        console.debug('[EVENT SENDER] received from manager:', data.toString().trim());
+        const str = data.toString();
+        const lines = str.split(/\r?\n/);
+        for (const line of lines) {
+          const msg = line.trim();
+          if (!msg) continue;
+          const parts = msg.split(/\s+/);
+          if (parts[0] === 'STATE_UPDATE' && parts.length >= 3) {
+            const devID = parts[1];
+            const state = parts[2].toUpperCase() === 'ON' ? 'ON' : 'OFF';
+            if (sONOFF[devID]) {
+              sONOFF[devID].state = state;
+              if (sONOFF[devID].params === undefined || sONOFF[devID].params === null) {
+                sONOFF[devID].params = {};
+              }
+              sONOFF[devID].params.switch = state.toLowerCase();
+              events.emit('device:updated', { deviceID: devID, params: { switch: state.toLowerCase() } });
+            }
+          }
+        }
+        console.debug('[EVENT SENDER] received from manager:', str.trim());
       });
 
       client.on('error', (err) => {

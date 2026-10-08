@@ -740,12 +740,12 @@
                 }
             },
 
-            async toggleLight(code) {
+            async toggleLight(code, state) {
                 try {
                     const response = await fetch('/api/light/toggle', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ code })
+                        body: JSON.stringify({ code, state })
                     });
                     return await response.json();
                 } catch (error) {
@@ -1247,10 +1247,21 @@
 
                 const next = !liveStateFor(light);
 
-                // In OPERATIVO mode, send command to server
+                // In OPERATIVO mode, send command to server. The expected next
+                // state is included so lights whose device cannot report back
+                // (RF fallback) get their recorded state updated too.
                 if (operatingMode === 'OPERATIVO') {
-                    const result = await API.toggleLight(light.code);
+                    const result = await API.toggleLight(light.code, next ? 'ON' : 'OFF');
                     if (result.success === false) return;
+                } else if (operatingMode === 'CORREGGI' && isTracked(light)) {
+                    // In CORREGGI mode, user is correcting state - also sync to backend
+                    try {
+                        await fetch('/api/state/update', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ code: light.code, state: next ? 'ON' : 'OFF' })
+                        });
+                    } catch (e) {}
                 }
 
                 // Optimistic update: the toggle is instant, and the live state

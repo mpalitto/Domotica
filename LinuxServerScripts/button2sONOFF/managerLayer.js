@@ -101,9 +101,53 @@ async function syncDevice(alias, desired) {
   if (deviceRfCode[alias]) {
     sendRfToggle(deviceRfCode[alias]);
     deviceState[alias] = desired;
+    if (devID) {
+      broadcastStateToProxy(devID, desired);
+    }
+    broadcastStateToWebUI(deviceRfCode[alias], desired);
   }
 }
 
+
+function broadcastStateToProxy(devID, state) {
+  if (!devID) return;
+  const msg = `STATE_UPDATE ${devID} ${state}
+`;
+  for (let i = eventSockets.length - 1; i >= 0; i--) {
+    const socket = eventSockets[i];
+    if (socket.destroyed) {
+      eventSockets.splice(i, 1);
+      continue;
+    }
+    if (isLocalWebUI(socket)) continue;   // the sender, not the eWeLink proxy
+    try {
+      socket.write(msg);
+    } catch (e) {
+      eventSockets.splice(i, 1);
+    }
+  }
+}
+
+// The local web UI posts corrections to this port from 127.0.0.1; the eWeLink
+// proxy connects from its own host and only ever reports real device events.
+function isLocalWebUI(socket) {
+  const addr = socket.remoteAddress || '';
+  return addr === '::1' || addr === '127.0.0.1' || addr.endsWith('127.0.0.1');
+}
+
+function broadcastStateToWebUI(rfCode, state) {
+  try {
+    const http = require('http');
+    const payload = JSON.stringify({ code: rfCode, state });
+    const req = http.request(
+      { hostname: '127.0.0.1', port: 3000, path: '/api/state/update', method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) } },
+      res => { res.resume(); }
+    );
+    req.on('error', () => {});
+    req.write(payload);
+    req.end();
+  } catch (e) {}
+}
 async function handleButtonPress(remoteID, buttonN) {
   const buttonID = `${remoteID}${buttonN}`;
   console.log(`dealing button: ${buttonID}`);
@@ -182,6 +226,8 @@ function loadConfigs() {
     });
 }
 
+const eventSockets = [];
+
 /* ================= EVENT SERVER ================= */
 
 function startEventServer() {
@@ -196,6 +242,12 @@ function startEventServer() {
       switch (type) {
         case 'STATE_UPDATE':
           deviceState[alias] = value;
+          // A STATE_UPDATE posted by the local web UI is a state correction
+          // (CORREGGI mode / web toggle of an RF-fallback light): relay it to
+          // the eWeLink proxy, otherwise its next /devices report overwrites
+          // the change in the UI. Reports coming from the proxy itself are not
+          // relayed back (that would just bounce).
+          if (isLocalWebUI(socket)) broadcastStateToProxy(devID, value);
           break;
         case 'CONNECTED':
           deviceConnected[alias] = 'yes';
@@ -216,6 +268,12 @@ function startEventServer() {
   );
 
   server.on('connection', socket => {
+    eventSockets.push(socket);
+    socket.on('error', () => {});   // writes to a closing socket would otherwise throw
+    socket.on('close', () => {
+      const idx = eventSockets.indexOf(socket);
+      if (idx !== -1) eventSockets.splice(idx, 1);
+    });
     console.log(`Incoming connection from ${socket.remoteAddress}:${socket.remotePort}`);
   });
 

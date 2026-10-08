@@ -2,6 +2,7 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const fs = require('fs');
 const http = require('http');
+const net = require('net');
 const { exec } = require('child_process');
 const path = require('path');
 
@@ -155,6 +156,13 @@ function loadDeviceMap() {
 
 /* ================= STATE PUSH (SSE) ================= */
 
+// A correction pushed from the UI holds for OVERRIDE_MS before the proxy poll
+// is allowed to overwrite it again: it covers the round trip to the eWeLink
+// proxy and keeps the value visible if that round trip fails.
+const OVERRIDE_MS = 10000;
+const stateOverrides = {};
+
+
 const sseClients = new Set();
 
 function stateSnapshot() {
@@ -224,18 +232,34 @@ function fetchDevices() {
 }
 
 function applyDevices(devices) {
-    for (const key of Object.keys(stateByCode)) delete stateByCode[key];
     for (const key of Object.keys(onlineByCode)) delete onlineByCode[key];
 
+    const now = Date.now();
+    const reported = new Set();
     for (const dev of devices) {
         const code = codeByDevice[dev.deviceid];
         if (!code) continue;   // device is not mapped to a light in sONOFF.config
 
+        reported.add(code);
         const sw = dev.params && dev.params.switch;
         if (sw === 'on' || sw === 'off') {
-            stateByCode[code] = sw.toUpperCase();
+            if (stateOverrides[code] && (now - stateOverrides[code]) < OVERRIDE_MS) {
+                // keep local override
+            } else {
+                stateByCode[code] = sw.toUpperCase();
+            }
         }
         onlineByCode[code] = !!(dev.localOnline || dev.cloudOnline);
+    }
+
+    // Drop codes the proxy no longer reports (device gone, sONOFF.config edited),
+    // so a light that lost its mapping falls back to its stored state instead of
+    // showing a frozen "live" state forever.
+    for (const code of Object.keys(stateByCode)) {
+        if (!reported.has(code)) {
+            delete stateByCode[code];
+            delete stateOverrides[code];
+        }
     }
 }
 
@@ -383,25 +407,89 @@ app.get('/api/room/:roomId', async (req, res) => {
     }
 });
 
+/* ================= STATE SYNC HELPERS ================= */
+
+function normalizeSwitch(v) {
+    return typeof v === 'string' && /^(on|off)$/i.test(v) ? v.toUpperCase() : null;
+}
+
+const hasState = code => Object.prototype.hasOwnProperty.call(stateByCode, code);
+
+// Push a switch state correction to managerLayer, which owns the logical button
+// state and relays the change to the eWeLink proxy (see managerLayer.js).
+function sendStateToManagerLayer(code, state) {
+    try {
+        const entry = deviceByCode[code.toUpperCase()];
+        if (!entry || !entry.deviceID) return;
+        const client = net.createConnection({ host: '127.0.0.1', port: 7777 }, () => {
+            client.write(`STATE_UPDATE ${entry.deviceID} ${state.toUpperCase()}\n`);
+            client.end();
+        });
+        client.on('error', () => { client.destroy(); });
+        setTimeout(() => { if (client && !client.destroyed) client.end(); }, 1000);
+    } catch (e) {}
+}
+
+// Record a switch state locally and push it everywhere it matters: the SSE
+// clients, then managerLayer (which relays it to the eWeLink proxy so the next
+// poll keeps this value instead of reverting it).
+function applyStateUpdate(code, st) {
+    stateByCode[code] = st;
+    stateOverrides[code] = Date.now();
+    lastStateFetch = new Date().toISOString();
+    lastSignature = JSON.stringify(stateByCode);
+    broadcastStates();
+    try { sendStateToManagerLayer(code, st); } catch (e) {}
+}
+
 app.post('/api/light/toggle', (req, res) => {
-    const { code } = req.body;
+    const { code, state } = req.body;
 
     // The code goes into a shell command below, so only accept RF codes
     if (typeof code !== 'string' || !/^[0-9A-F]{4,8}$/i.test(code)) {
         return res.status(400).json({ success: false, error: 'invalid light code' });
     }
+    const c = code.toUpperCase();
 
-    exec(`screen -S arduino433tx -X stuff "s:${code.toUpperCase()}"`, (error) => {
+    exec(`screen -S arduino433tx -X stuff "s:${c}"`, (error) => {
         if (error) {
             console.error('Error executing command:', error);
             res.json({ success: false, error: error.message });
-        } else {
-            console.log(`Light command sent: s:${code.toUpperCase()}`);
-            // The new state is not known yet: the device reports it back through the
-            // proxy and reaches the UI on the next /api/states broadcast.
-            res.json({ success: true, code: code.toUpperCase() });
+            return;
         }
+        console.log(`Light command sent: s:${c}`);
+        // Keep the eWeLink state and the web UI in sync with what was just
+        // commanded: record the expected switch state and push it to
+        // managerLayer, which relays it to the eWeLink proxy (and from there
+        // to the cloud bridge). Locally online devices report their real state
+        // on their own anyway, so any mismatch self-corrects on the next poll;
+        // RF-fallback (offline) devices have no way to report, so this is the
+        // only thing that keeps the UI and the eWeLink record honest.
+        const expected = normalizeSwitch(state);
+        if (expected && hasState(c)) {
+            applyStateUpdate(c, expected);
+        }
+        res.json({ success: true, code: c });
     });
+});
+
+app.post('/api/state/update', (req, res) => {
+    const { code, state } = req.body;
+    if (typeof code !== 'string' || !/^[0-9A-F]{4,8}$/i.test(code)) {
+        return res.status(400).json({ success: false, error: 'invalid light code' });
+    }
+    const st = normalizeSwitch(state);
+    if (!st) {
+        return res.status(400).json({ success: false, error: 'invalid state' });
+    }
+    const c = code.toUpperCase();
+    // Only lights the proxy reports have an eWeLink state to correct. Codes
+    // without a deviceID (RF-only lights) are tracked by the room map only.
+    if (!hasState(c)) {
+        return res.status(404).json({ success: false, error: 'unknown light' });
+    }
+    applyStateUpdate(c, st);
+    res.json({ success: true, code: c, state: st });
 });
 
 /* ================= MAIN ================= */
