@@ -1,4 +1,15 @@
 # OpenWRT configuration
+
+> **⚠️ HISTORICAL — superseded.** This documents the *original* OpenWRT router.
+> The router is now **Proxmox LXC 111 "MAIN-router" at `192.168.1.1`** (Debian +
+> dnsmasq, no OpenWRT/UCI). The concepts below survived the migration and are
+> live today: IoT MAC pool `D0:27:00:*` → DHCP `192.168.1.128-191`, DNS
+> interception of port 53 → second dnsmasq on `:1053` answering `192.168.1.11`.
+> On the LXC the redirect lives in **iptables PREROUTING**, both dnsmasq
+> instances start from **`/etc/rc.local`**, and since Oct 2026 all LAN clients
+> get `192.168.1.1` as their DHCP resolver. Current state: `AGENTS.md`
+> ("Network" section) and `macos/README.md`.
+
 ## Connecting to router via SSH
 since the router is an older one and not able to connect with modern crypto algorithms,
 

@@ -1,5 +1,22 @@
 # OpenWRT DNS & Network Enforcement
 
+> **⚠️ MIGRATED (Oct 2026).** The design below is still in force, but it no
+> longer runs on OpenWRT — the router is a Debian LXC (`192.168.1.1`, Proxmox
+> LXC 111). What changed in practice:
+>
+> * IoT MACs `D0:27:00:*` are tagged in `/etc/dnsmasq.conf` and get the DHCP
+>   pool `192.168.1.128-191` (UCI `config tag 'iot'` → `dhcp-mac=set:iot,...`)
+> * The DNS interception is an **iptables PREROUTING `REDIRECT`** of `udp/tcp
+>   53` from `192.168.1.128/26` to port **1053** (was OpenWRT `firewall.user`)
+> * The second dnsmasq (`/etc/dnsmasq-iot.conf`, "answer everything with
+>   `192.168.1.11`") listens on `192.168.1.1:1053`
+> * Both instances are started by **`/etc/rc.local`**, not systemd
+> * Since Oct 2026 every LAN client also gets `192.168.1.1` as its DHCP DNS,
+>   so the main dnsmasq is the resolver in normal use and the interception is
+>   the enforcement backstop for the IoT pool only
+>
+> See `AGENTS.md` ("Network" section) and `macos/README.md`.
+
 This document describes the low-level DNS interception and DHCP configuration used to control SONOFF devices at the router level.
 
 NOTE: All logic runs inside OpenWRT.

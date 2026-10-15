@@ -15,7 +15,12 @@
 
 ## Remote Access
 
-- Password-less SSH as `root@192.168.1.77` (key: `~/.ssh/id_ed25519`)
+- **The agent can run commands on these boxes directly** — the shell tool works and key-based SSH is password-less (`BatchMode=yes`, no TTY needed). Diagnose, fix and verify on-box yourself instead of asking the user to paste terminal output. Reserve user round-trips for things only their machine/physical devices can do: `sudo` on the Mac, phone Wi-Fi toggles, etc.
+- Password-less SSH (key: `~/.ssh/id_ed25519`):
+  - `root@192.168.1.77` — Linux server
+  - `root@192.168.1.11` — eWeLink proxy host
+  - `root@192.168.1.33` — Proxmox host (`pve`)
+  - `root@192.168.1.1` — router LXC (`MAIN-router`)
 - `macos/mount.sh` mounts `192.168.1.77:/root/Domotica/LinuxServerScripts` → `~/mnt/domotica` (uses NFS, requires sudo)
 - NFS export on server uses `all_squash,anonuid=0,anongid=0` so all clients map to root
 - Manual unmount: `sudo umount ~/mnt/domotica` or `diskutil unmount ~/mnt/domotica`
@@ -49,6 +54,18 @@
 - **NFS mount** — checks local mount status
 - **eWeLink Proxy** — service status, process PID, API device count (total/online), loaded plugins
 
+## Network (LAN, IPv6, DNS)
+
+- **Topology**: ISP modem `192.168.0.1` (routing mode → double NAT, PPPoE-class WAN, ~1492 MTU) → router LXC `192.168.1.1` (Proxmox LXC `111` "MAIN-router": IPv4 NAT + dnsmasq DHCP/DNS) → home LAN `192.168.1.0/24` on the Proxmox host's `vmbr0` (host `192.168.1.33`, Fujitsu mini-PC; `vmbr1` is the USB NIC facing the modem).
+- **IPv6 blackhole — fixed Oct 2026, do not regress**: `radvd` on `192.168.1.33` re-advertised the ISP's on-link prefix `2a0e:437:7b9b::/64` (learned on `vmbr1`) onto the LAN bridge `vmbr0` while IPv6 forwarding was 0 everywhere → all LAN IPv6 silently dropped → Android apps hung (IPv6/QUIC has no fallback; iOS fell back to IPv4). Fix: `radvd` is **disabled and must stay disabled** (`systemctl disable radvd`), plus a TCPMSS clamp (`--set-mss 1452`) on the LXC's `FORWARD` chain for the ~1492 MTU WAN — persisted in the LXC's `/etc/firewall.user`, which `/etc/rc.local` applies at boot (iptables rules live in RAM and die with the container; there is no iptables-persistent here). The LAN is intentionally IPv4-only; real IPv6 would need modem bridge mode + prefix delegation. Never point an RA at `vmbr0` without working IPv6 forwarding/upstream.
+- **DNS**: LAN clients get `192.168.1.1` (dnsmasq on the LXC) as resolver — applied by `macos/fix-dns-lxc.sh`, which appends a marked block to `/etc/dnsmasq.conf` (`dhcp-option=option:dns-server,192.168.1.1` + `no-resolv` + upstreams `192.168.0.1`, `1.1.1.1`, `8.8.8.8`); timestamped `.bak-*` backups next to the conf. Live since Oct 2026; clients only switch after a DHCP renew.
+- **LXC dnsmasq specifics**: two instances started by **`/etc/rc.local`, not systemd** — main on `:53` (`/etc/dnsmasq.conf`: LAN DHCP `192.168.1.192-240`, IoT pool `192.168.1.128-191` tagged by `dhcp-mac=D0:27:00:*`, leases in `/tmp/dhcp.leases`) and the IoT DNS-hijack instance (`/etc/dnsmasq-iot.conf`, answers everything with `192.168.1.11`) on `192.168.1.1:1053`. The OpenWRT NAT redirect **was migrated and is active**: PREROUTING `REDIRECT` of `udp/tcp 53` from `192.168.1.128/26` to port `1053`. To restart the main instance: `kill $(cat /run/dnsmasq-main.pid)` then `dnsmasq --conf-file=/etc/dnsmasq.conf --pid-file=/run/dnsmasq-main.pid` — config changes are **not** picked up by SIGHUP.
+- **Diagnostics/fix tooling** (all in `macos/`, see `macos/README.md` for details):
+  - `netdiag.sh` — from the Mac: IPv4/IPv6/DNS/MTU + IPv6 forensics; verdict distinguishes healthy *absent* IPv6 (no default route, instant fail) from a *blackhole* (default route, silent drop).
+  - `ipv6-diag.sh` — read-only SSH snapshot of `.33` and `.1` (RA/DHCP config, forwarding sysctls).
+  - `fix-ipv6-lan.sh` — disables radvd on the host (`-m` adds the TCPMSS clamp); prints rollback + client IPv6 flush steps.
+  - `fix-dns-lxc.sh` — hands DNS to the LXC (`-n` dry run, `-y` apply); validates with `dnsmasq --test` and self-restores on failure; restarts via the pidfile since dnsmasq here is rc.local-managed, not systemd.
+
 ## Monitoring — `macos/watchdog.sh`
 
 - Silent-until-broken health check; `--verbose` for every test, `--json` for one machine-readable line. Exit `0` healthy, `1` on errors.
@@ -75,6 +92,7 @@
 
 - NFS mount (`~/mnt/domitica`) only covers `.77:LinuxServerScripts` — does **not** give access to eWeLink-Proxy or other paths.
 - For files on `.11`, use SSH. Avoid heredocs with template literals — local zsh expands `${}` before sending.
+- Safe multi-line remote execution from the shell tool: pipe a **quoted** heredoc into `ssh host bash -s` (`ssh ... 'host' bash -s <<'EOF'` — the quoted delimiter suppresses all local expansion; the remote bash does the interpreting). This is the pattern used by `macos/fix-dns-lxc.sh`; see also "Remote Access" above — direct on-box execution is available.
 - Reliable method: write a `.py` script locally → `scp` to remote → `ssh` to run it.
 - Use Python scripts for multi-line edits with tricky characters; use `sed` for simple one-line substitutions.
 
