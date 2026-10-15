@@ -87,16 +87,31 @@ echo "    a ~8s hang = packets silently dropped = blackhole)"
 
 # ---------------------------------------------------------------------- MTU
 hr "MTU / packet size (DF, does not fragment)"
-if ping -D -c 1 -s 1472 1.1.1.1 >/dev/null 2>&1; then
-  echo "   1472-byte payload (1500 MTU): OK"
+# This line's path MTU is NOT a classic 1500/1492. Sky Italia carries the access
+# over IPv6 and the Sky hub translates IPv4 to IPv6 (464XLAT/CLAT style), so the
+# IPv4 MTU is 1500 - 20 = 1480. Bisect to measure it and derive the MSS clamp.
+PMTU=""
+for s in 1472 1464 1460 1452 1444 1436 1428 1420 1412 1400 1380 1360 1340; do
+  if ping -D -c 1 -t 2 -s "$s" 1.1.1.1 >/dev/null 2>&1; then PMTU=$((s + 28)); break; fi
+done
+if [ -n "$PMTU" ]; then
+  echo "   largest IPv4 packet that fits (DF): $PMTU bytes"
+  case "$PMTU" in
+    1500) echo "   -> full-size path; no MSS clamp needed" ;;
+    1492) echo "   -> PPPoE (1500 - 8); MSS clamp 1452" ;;
+    1480) echo "   -> IPv4->IPv6 translation / 464XLAT (1500 - 20); MSS clamp 1440" ;;
+    1460) echo "   -> IPv4 encapsulated in IPv6 / DS-Lite over IPoE (1500 - 40); MSS clamp 1420" ;;
+    1452) echo "   -> DS-Lite over PPPoE (1492 - 40); MSS clamp 1412" ;;
+    *)    echo "   -> reduced path MTU; MSS clamp should be $((PMTU - 40))" ;;
+  esac
+  [ "$PMTU" -lt 1500 ] && echo "      a clamp too high lets TCP emit oversized segments that get" \
+                              "silently dropped (PMTU blackhole on large transfers)"
 else
-  echo "   1472-byte payload (1500 MTU): FAIL  <-- path MTU problem (PMTU blackhole)"
+  echo "   even 1340-byte packets FAIL: ICMP may be filtered, or IPv4 is broken"
 fi
-if ping -D -c 1 -s 1400 1.1.1.1 >/dev/null 2>&1; then
-  echo "   1400-byte payload: OK"
-else
-  echo "   1400-byte payload: FAIL"
-fi
+echo "   clamp currently on the router LXC (192.168.1.1):"
+ssh -o ConnectTimeout=5 -o BatchMode=yes root@192.168.1.1 \
+  "iptables -t mangle -S FORWARD | grep TCPMSS || echo '(none)'" 2>/dev/null | sed 's/^/   /'
 
 # ------------------------------------------------------------ IPv6 forensics
 hr "IPv6 forensics — who advertises IPv6 on the LAN?"

@@ -120,18 +120,41 @@ forever; iOS falls back to IPv4 via Happy Eyeballs → looks fine. The same
 construction.
 
 **Fix** (applied Oct 2026): `systemctl disable --now radvd` on the host, plus
-a TCPMSS clamp (`--set-mss 1452`) in the router LXC's `FORWARD` chain — the
-WAN is PPPoE-class (~1492 MTU, `ping 1472B` fails / `1400B` works), and
-OpenWRT's `mtu_fix` used to clamp MSS automatically while a plain Debian LXC
-does not. The LAN is deliberately IPv4-only now; if real IPv6 is ever wanted
-it requires the modem in bridge mode with prefix delegation (PD), because with
-the modem routing, its on-link /64 can never be shared with the LAN.
+a TCPMSS clamp (`--set-mss 1440`) in the router LXC's `FORWARD` chain. The LAN
+is deliberately IPv4-only now; if real IPv6 is ever wanted it requires the
+modem in bridge mode with prefix delegation (PD), because with the modem
+routing, its on-link /64 can never be shared with the LAN.
+
+### The WAN path MTU is 1480, not 1492 (and why the clamp must match)
+
+OpenWRT's `mtu_fix` used to clamp MSS automatically; a plain Debian LXC does
+not, so the clamp is now explicit. The value matters: Sky Italia carries the
+access over IPv6 and the **Sky hub translates IPv4 to IPv6** (464XLAT/CLAT
+style), swapping the 20-byte IPv4 header for the 40-byte IPv6 one, so the IPv4
+path MTU is `1500 - 20 = 1480` — *not* the classic 1492 (PPPoE) or 1500. The
+Sky hub also gives **no ICMP "frag needed"**: an oversized packet is just
+dropped, so a clamp set too high (e.g. 1452, which assumes 1492) lets TCP emit
+1492-byte segments that vanish → PMTU blackhole on large transfers.
+
+Measured with a DF-ping bisect (`netdiag.sh` does this automatically):
+
+| Largest IPv4 packet that fits | Overhead | Mechanism | MSS clamp |
+|---|---|---|---|
+| 1500 | 0 | native IPv4 | none |
+| 1492 | 8 | PPPoE | 1452 |
+| **1480** | **20** | **IPv4→IPv6 translation (464XLAT/CLAT)** ← this line | **1440** |
+| 1460 | 40 | IPv4 encapsulated in IPv6 (DS-Lite/MAP-E over IPoE) | 1420 |
+| 1452 | 40 | DS-Lite over PPPoE (1492 − 40) | 1412 |
+
+The 20-byte signature is what rules out DS-Lite/MAP-E *encapsulation* here. The
+clamp is `--set-mss 1440`, auto-detected by `fix-ipv6-lan.sh -m` (`MSS=` overrides)
+and verified on the wire (client SYNs leave the LXC with `mss 1440`).
 
 ### Network topology
 
 | Box | Address | Role |
 |-----|---------|------|
-| ISP modem | `192.168.0.1` | Routing mode (double NAT), PPPoE WAN ~1492 MTU |
+| ISP modem (Sky hub) | `192.168.0.1` | Routing mode (double NAT); IPv6-carried access with IPv4→IPv6 translation → IPv4 path MTU 1480 |
 | Router LXC | `192.168.1.1` | Proxmox LXC `111` "MAIN-router" — IPv4 NAT, dnsmasq DHCP + DNS for the LAN |
 | Proxmox host | `192.168.1.33` | Fujitsu mini-PC — `vmbr0` = home LAN, `vmbr1` = USB NIC facing the modem |
 
