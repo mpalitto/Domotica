@@ -50,6 +50,7 @@ The new `button2sONOFF/` system tries WiFi first (`eWeLink Proxy`), falls back t
 | `fix-ipv6-firewall.sh` | Default-deny IPv6 on `.33` and `.1` — they sit in front of the LAN and were reachable from the internet (`-y` apply, `-u` remove) |
 | `fix-ipv6-relay.sh` | Gives the LAN real IPv6 via an NDP relay on the router LXC (`-y` apply, `-s` status, `-u` remove) |
 | `ipv6-relay-agent.sh` | LXC-side agent deployed to `/usr/local/sbin/ipv6-relay.sh` (`install`/`uninstall`/`harden`/`setup`/`teardown`/`refresh`/`status`) |
+| `IPV6-RELAY.md` | Design + operational runbook for the IPv6 relay (deploy, verify, troubleshoot, roll back) |
 
 All scripts resolve their siblings relative to their own location, so this
 directory can be checked out anywhere.
@@ -135,6 +136,9 @@ single on-link `/64` cannot be handed to the LAN as a normal subnet). See
 device allowed to advertise IPv6 on the LAN is the router LXC.
 
 ### IPv6 relay (Oct 2026)
+
+> **Operational runbook:** [`IPV6-RELAY.md`](IPV6-RELAY.md) — deploy, verify,
+> operate, troubleshoot and roll back the relay. This section is the *why*.
 
 The LAN has real, globally routable IPv6 again. It is a **relay** (NDP proxy),
 not NAT66 and not a routed subnet, because the Sky hub advertises a single
