@@ -47,6 +47,9 @@ The new `button2sONOFF/` system tries WiFi first (`eWeLink Proxy`), falls back t
 | `ipv6-diag.sh` | Read-only SSH diagnostic for the Proxmox host (`.33`) and router LXC (`.1`) |
 | `fix-ipv6-lan.sh` | Stops the Proxmox host advertising the broken ISP IPv6 prefix on the LAN (`-m` also clamps TCP MSS) |
 | `fix-dns-lxc.sh` | Makes the router LXC's DHCP hand out `192.168.1.1` as DNS instead of the ISP modem (`-n` dry run) |
+| `fix-ipv6-firewall.sh` | Default-deny IPv6 on `.33` and `.1` — they sit in front of the LAN and were reachable from the internet (`-y` apply, `-u` remove) |
+| `fix-ipv6-relay.sh` | Gives the LAN real IPv6 via an NDP relay on the router LXC (`-y` apply, `-s` status, `-u` remove) |
+| `ipv6-relay-agent.sh` | LXC-side agent deployed to `/usr/local/sbin/ipv6-relay.sh` (`install`/`uninstall`/`harden`/`setup`/`teardown`/`refresh`/`status`) |
 
 All scripts resolve their siblings relative to their own location, so this
 directory can be checked out anywhere.
@@ -120,10 +123,84 @@ forever; iOS falls back to IPv4 via Happy Eyeballs → looks fine. The same
 construction.
 
 **Fix** (applied Oct 2026): `systemctl disable --now radvd` on the host, plus
-a TCPMSS clamp (`--set-mss 1440`) in the router LXC's `FORWARD` chain. The LAN
-is deliberately IPv4-only now; if real IPv6 is ever wanted it requires the
-modem in bridge mode with prefix delegation (PD), because with the modem
-routing, its on-link /64 can never be shared with the LAN.
+a TCPMSS clamp (`--set-mss 1440`) in the router LXC's `FORWARD` chain. That
+stopped the blackhole, leaving the LAN with *no* IPv6 at all — which is safe,
+because an absent IPv6 fails in milliseconds and clients fall back to IPv4
+instantly.
+
+**Then real IPv6 was added back on purpose** — but correctly, as a *relay*
+rather than a routed subnet (the modem gives no prefix delegation, and its
+single on-link `/64` cannot be handed to the LAN as a normal subnet). See
+[IPv6 relay](#ipv6-relay-oct-2026). The host's radvd stays disabled; the only
+device allowed to advertise IPv6 on the LAN is the router LXC.
+
+### IPv6 relay (Oct 2026)
+
+The LAN has real, globally routable IPv6 again. It is a **relay** (NDP proxy),
+not NAT66 and not a routed subnet, because the Sky hub advertises a single
+on-link `/64` and gives **no prefix delegation** — and that `/64` is on the
+*modem's* LAN, which the router LXC's WAN leg (`ether2`) already sits on. The
+relay makes the split explicit instead of putting the same prefix on-link on
+two segments (which is exactly what broke in Oct 2026).
+
+```
+        modem LAN 192.168.0.0/24                     home LAN 192.168.1.0/24
+                │                                              │
+    ether2 ─────┤            router LXC (CT 111)           ├───── eth0
+ default route   │            192.168.1.1                   │  owns the /64
+ only; the /64   │                                          │  radvd advertises it
+ kept OFF this   │  ndppd: answers the modem's NDP for      │  (deliberately no
+ leg (that is    │  LAN hosts using our own MAC, so         │   RDNSS)
+ the whole       │  return traffic arrives here             │
+ point)          └──────────────  ip6tables  ───────────────┘
+                           LAN may initiate outbound;
+                           nothing may initiate inbound
+```
+
+| Piece | Setting | Why |
+|---|---|---|
+| WAN leg | `accept_ra=2`, `accept_ra_defrtr=1` | Keep the modem's default route on a *forwarding* host — plain `accept_ra=1` loses it the instant forwarding turns on |
+| WAN leg | `accept_ra_pinfo=0` | The `/64` must **not** be on-link here; this is what prevents the Oct 2026 situation |
+| WAN leg | `all.forwarding=1` | The LXC forwards LAN ⇄ modem |
+| LAN leg | `accept_ra=0`, holds `2a0e:437:7b9b::/64` | We are the router here; never take an RA from our own radvd |
+| `ndppd` (`auto` rule) | on `ether2` | Answers the modem's Neighbour Solicitations for LAN addresses with our MAC, so replies come back to us |
+| `radvd` | on `eth0`, **no RDNSS** | Hands the prefix to LAN clients. Withholding RDNSS keeps the DHCPv4 resolver `192.168.1.1` — and therefore the IoT DNS hijack for `192.168.1.128/26` — fully intact |
+
+Why it is safe this time:
+
+- **One advertiser only.** The host's radvd stays disabled. `netdiag.sh`'s IPv6
+  forensics resolve the RA source MAC: it must be the LXC's `eth0`
+  (`bc:24:11:94:bb:ff`), never the Proxmox host.
+- **It refuses to advertise without a working upstream.** Enabling forwarding
+  makes the kernel *drop* the RA-learned default route, and it only comes back
+  on the modem's next RA (up to ~10 min). The agent therefore sends its own
+  Router Solicitation and, if no default route appears, does **not** start
+  radvd — so a half-built relay degrades to IPv4-only, never to a blackhole.
+- **radvd cannot outlive its plumbing.** `radvd-relay.service` has
+  `Requires=ndppd-relay.service`, and the advertised prefix lifetime is 1 h, so
+  anything that dies self-heals back to IPv4-only within the hour.
+- **Default-deny inbound, centrally.** The LXC's IPv6 `FORWARD` policy is
+  `DROP`, allowing only LAN-initiated and ICMPv6 traffic, so every LAN host is
+  protected without configuring any host. Verified with an external IPv6 port
+  checker: a *live* listener on a LAN host is unreachable from the internet.
+- **The packaged `radvd.service` stays masked.** radvd is driven only by our
+  own unit, after the prefix, route, ndppd and firewall all exist.
+
+Persistence and plumbing:
+
+| File / unit | Role |
+|---|---|
+| `/etc/sysctl.d/99-ipv6-relay.conf` | The sysctls above (order matters — see the comments) |
+| `ipv6-relay.service` | oneshot; runs `setup` at boot and `teardown` on stop |
+| `ndppd-relay.service`, `radvd-relay.service` | the two daemons (radvd `Requires=` ndppd) |
+| `ipv6-relay-refresh.timer` | every 5 min; re-derives the prefix and restarts the daemons if it changed |
+| `/usr/local/sbin/ipv6-relay.sh` | the on-box agent (deployed from `ipv6-relay-agent.sh`) |
+
+**Known quirk, deliberately left alone:** the **Proxmox host** keeps its
+modem-side IPv6 on `vmbr1` (a `2a0e:…` address in the *same* `/64` as the LAN)
+and takes no address on `vmbr0`. So it can reach the IPv6 internet but it and
+the LAN cannot reach each other over IPv6. Host management is IPv4 anyway, and
+its inbound IPv6 is default-denied.
 
 ### The WAN path MTU is 1480, not 1492 (and why the clamp must match)
 
@@ -154,9 +231,9 @@ and verified on the wire (client SYNs leave the LXC with `mss 1440`).
 
 | Box | Address | Role |
 |-----|---------|------|
-| ISP modem (Sky hub) | `192.168.0.1` | Routing mode (double NAT); IPv6-carried access with IPv4→IPv6 translation → IPv4 path MTU 1480 |
-| Router LXC | `192.168.1.1` | Proxmox LXC `111` "MAIN-router" — IPv4 NAT, dnsmasq DHCP + DNS for the LAN |
-| Proxmox host | `192.168.1.33` | Fujitsu mini-PC — `vmbr0` = home LAN, `vmbr1` = USB NIC facing the modem |
+| ISP modem (Sky hub) | `192.168.0.1` | Routing mode (double NAT); IPv6-carried access with IPv4→IPv6 translation → IPv4 path MTU 1480; advertises the on-link `/64`, gives **no** prefix delegation, and applies **no** inbound IPv6 firewall |
+| Router LXC | `192.168.1.1` | Proxmox LXC `111` "MAIN-router" — IPv4 NAT, dnsmasq DHCP + DNS for the LAN, **and the IPv6 relay** (ndppd on the WAN leg + radvd on the LAN leg) |
+| Proxmox host | `192.168.1.33` | Fujitsu mini-PC — `vmbr0` = home LAN, `vmbr1` = USB NIC facing the modem; radvd stays disabled here |
 
 ### DNS
 
@@ -189,14 +266,20 @@ you confirm (or pass `-y`).
 ./ipv6-diag.sh      # always safe: read-only SSH snapshots of .33 and .1
 ./fix-ipv6-lan.sh   # -y no questions, -m also adds the TCPMSS clamp
 ./fix-dns-lxc.sh    # -n dry run (inspect only), -y apply, no flag = ask
+./fix-ipv6-firewall.sh  # -y apply, -u -y remove; default-deny IPv6 on .33 + .1
+./fix-ipv6-relay.sh     # -y apply, -s status, -u -y remove; the IPv6 relay
 ```
 
 - **`netdiag.sh`** — interfaces/routes, system resolvers, router-vs-system
   DNS comparison, IPv4 vs IPv6 reachability, HTTP by raw IP vs by name, DF
   MTU probe, and IPv6 forensics that resolves the RA source MAC to a vendor
   and an IPv4/ARP match. Its verdict distinguishes a healthy *absent* IPv6
-  (no default route, fails in ms) from a *blackhole* (default route present,
-  packets silently dropped — the app-hanging failure mode).
+  (no default route, fails in ms), a healthy *dual-stack* LAN (which is what
+  the relay provides), and a genuine *blackhole* (default route present,
+  packets silently dropped — the app-hanging failure mode). Note it uses a
+  bounded `ping6` helper: on macOS `ping6 -t` is *not* a timeout (it is a Node
+  Information query that eats the next argument as a hostname), so using it
+  makes the check fail and report a false blackhole.
 - **`ipv6-diag.sh`** — SSHes into the Proxmox host and the router LXC and
   dumps interfaces, IPv6 routes, forwarding sysctls, radvd/dnsmasq configs
   and processes. This is what pinpointed `radvd` on the host.
@@ -214,12 +297,40 @@ you confirm (or pass `-y`).
   pidfile — this LXC is `rc.local`-managed) and verifies with `dig` from the
   Mac. Clients only see the new resolver after their DHCP lease renews —
   Mac: `sudo ipconfig set en0 DHCP`; Android: toggle Wi-Fi.
+- **`fix-ipv6-firewall.sh`** — the two boxes that sit in *front* of the LAN
+  (the Proxmox host and the router LXC) accepted everything over IPv6 from the
+  whole internet, because the Sky hub applies no inbound IPv6 firewall at all.
+  This sets `INPUT` to `DROP` on both (allowing only `lo`, our own replies,
+  ICMPv6 and the LAN) and `FORWARD` to `DROP` on the LXC (allowing only
+  LAN-initiated traffic). ICMPv6 is allowed wholesale on purpose — NDP, RA and
+  Packet-Too-Big are mandatory for IPv6 to function (RFC 4890). It persists via
+  a systemd unit on the host (no `iptables-persistent` there) and the usual
+  `/etc/firewall.user` + `rc.local` on the LXC, and is idempotent. `-u -y`
+  restores plain `ACCEPT`. Verify from outside with an IPv6 port checker —
+  `:22` and `:8006` on `.33`, `:22` and `:53` on `.1` must all read **Failed**.
+- **`fix-ipv6-relay.sh`** — deploys and enables the relay: checks/installs
+  `ndppd`/`ndisc6`/`radvd` on the LXC, ships `ipv6-relay-agent.sh` to
+  `/usr/local/sbin/ipv6-relay.sh`, runs `install`, starts
+  `ipv6-relay.service` and then verifies **end-to-end from the Mac** (a relayed
+  address must appear and `curl -6` must succeed — a default route on the
+  router proves nothing). `-s` prints status plus the Mac-side check; `-u -y`
+  tears the relay down, restoring the WAN leg to plain SLAAC while *leaving the
+  IPv6 firewall in place*. Deliberately does **not** use the packaged
+  `radvd.service` (kept masked) — radvd is started only by the agent, only
+  after the prefix, route, ndppd and firewall exist.
+- **`ipv6-relay-agent.sh`** — the on-box half: pure POSIX `sh`, deployed to
+  `/usr/local/sbin/ipv6-relay.sh` on the LXC. `install`/`uninstall` manage the
+  systemd units, `harden` applies the IPv6 firewall, `setup`/`teardown` apply
+  and revert the relay, `refresh` re-derives the ISP prefix and restarts the
+  daemons only if it changed, and `status` reports the whole picture. It is
+  safe to run by hand and is idempotent.
 
 ### Verify after any network change
 
 ```bash
-./netdiag.sh                    # IPv6-only tests must fail FAST (ms), verdict HEALTHY
-scutil --dns | head             # after a DHCP renew: first nameserver = 192.168.1.1
+./netdiag.sh                # expect verdict HEALTHY: dual-stack
+./fix-ipv6-relay.sh -s      # relay status + end-to-end IPv6 check from the Mac
+scutil --dns | head         # after a DHCP renew: first nameserver = 192.168.1.1
 ```
 
 ## Usage

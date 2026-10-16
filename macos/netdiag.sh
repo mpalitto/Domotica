@@ -12,6 +12,18 @@ set -u
 hr() { printf '\n===== %s =====\n' "$1"; }
 have() { command -v "$1" >/dev/null 2>&1; }
 
+# Bounded ping6.  macOS ping6 has NO overall-timeout option: `-t` means
+# "Node Information query" (it eats the next argument as a hostname), NOT the
+# v4 ping `-t timeout` — using it makes the check always fail and report a
+# blackhole even when IPv6 is fine.  Use -o (exit on first reply) and kill the
+# process ourselves if it does not answer in time.
+ping6_ok() {  # ping6_ok <host> [seconds]
+  local h=$1 t=${2:-3} p
+  ping6 -c 2 -o -q "$h" >/dev/null 2>&1 & p=$!
+  ( sleep "$t"; kill -TERM "$p" 2>/dev/null ) >/dev/null 2>&1 &
+  wait "$p" 2>/dev/null
+}
+
 hr "Time"
 date
 
@@ -62,7 +74,7 @@ done
 hr "Reachability (IPv6)"
 # Google's IPv6 address for ipv6.google.com (fallback to known anycast DNS)
 for t in 2606:4700:4700::1111 2001:4860:4860::8888; do
-  if ping6 -c 2 -i 1 2>/dev/null 5 "$t" >/dev/null 2>&1 || ping6 -c 2 "$t" >/dev/null 2>&1; then
+  if ping6_ok "$t" 3; then
     echo "   OK    $t"
   else
     echo "   FAIL  $t   <-- IPv6 blackhole if this fails while v4 pings OK"
@@ -152,7 +164,7 @@ fi
 # ------------------------------------------------------------------- verdict
 hr "Quick verdict"
 V6OK=1
-ping6 -c 2 -t 3 2606:4700:4700::1111 >/dev/null 2>&1 || V6OK=0
+ping6_ok 2606:4700:4700::1111 3 || V6OK=0
 V4OK=1
 ping -c 2 -t 3 1.1.1.1 >/dev/null 2>&1 || V4OK=0
 # does the LAN interface still have an IPv6 default route? (utun = VPN, ignored)
@@ -168,16 +180,19 @@ elif [ "$V4OK" = 1 ] && [ "$V6OK" = 0 ]; then
   echo "   ==> BLACKHOLE: IPv6 default route present via $V6DEF but upstream"
   echo "       IPv6 is silently dropped (IPv4 works). This is the classic cause"
   echo "       of apps hanging on Wi-Fi (Android prefers IPv6/QUIC; iOS falls"
-  echo "       back to IPv4). Fix the box sending Router Advertisements:"
-  echo "         * Proxmox host 192.168.1.33 -> systemctl disable --now radvd"
-  echo "         * router LXC   192.168.1.1   -> drop 'iface eth0 inet6 auto',"
-  echo "           disable any enable-ra / radvd / IPv6SendRA on its LAN bridge"
-  echo "       Re-run macos/fix-ipv6-lan.sh if not done yet."
+  echo "       back to IPv4). Find the box advertising on the LAN:"
+  echo "         * Proxmox host 192.168.1.33 -> must stay IPv6-quiet:"
+  echo "             systemctl disable --now radvd"
+  echo "         * router LXC   192.168.1.1   -> the only intended advertiser."
+  echo "             If only the relay is broken, stop it (it tears down cleanly):"
+  echo "             bash macos/fix-ipv6-relay.sh -u -y"
+  echo "             then re-check with: bash macos/fix-ipv6-relay.sh -s"
 elif [ "$V4OK" = 0 ]; then
   echo "   ==> IPv4 itself is failing from this Mac."
 else
-  echo "   ==> IPv4 and IPv6 both reachable; problem may be intermittent or"
-  echo "       client-specific (check the phone's own IPv6/DNS settings)."
+  echo "   ==> HEALTHY: IPv4 and IPv6 both reachable (dual-stack)."
+  echo "       If only some apps hang, it is intermittent or client-specific"
+  echo "       (check the phone's own IPv6/DNS settings)."
 fi
 
 hr "Done"
