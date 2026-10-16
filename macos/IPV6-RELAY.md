@@ -37,7 +37,7 @@ The relay makes the split explicit instead:
     ether2 ─────┤            router LXC (CT 111)           ├───── eth0
  default route   │            192.168.1.1                   │  owns the /64
  only; the /64   │                                          │  radvd advertises it
- kept OFF this   │  ndppd (auto): answers the modem's NDP   │  (deliberately no
+ kept OFF this   │  ndppd (iface eth0): answers the modem's │  (deliberately no
  leg             │  for LAN hosts using our own MAC, so     │   RDNSS)
                  │  return traffic arrives here             │
                  └──────────────  ip6tables  ───────────────┘
@@ -86,6 +86,9 @@ all**, so it is not reachable over IPv6 even before the firewall.
 7. **No RDNSS is advertised.** This keeps LAN clients on the DHCPv4 resolver
    (`192.168.1.1`), which preserves the eWeLink DNS hijack for the IoT pool
    (`192.168.1.128/26`). Do not add an RDNSS block to `radvd-relay.conf`.
+8. **The `ndppd` rule names the LAN leg explicitly (`iface eth0`).** Do **not**
+   use `auto`: on ndppd 0.2.4 it never relays here (no NA for the modem's NS →
+   LAN-wide 50–100 % loss). See §8 and §11.
 
 ## 4. What gets installed
 
@@ -95,7 +98,7 @@ On the **router LXC** (`192.168.1.1`):
 |---|---|
 | `/usr/local/sbin/ipv6-relay.sh` | the agent (deployed from `ipv6-relay-agent.sh`) |
 | `/etc/sysctl.d/99-ipv6-relay.conf` | the sysctls, applied at boot **and** by `setup` |
-| `/etc/ndppd-relay.conf` | `ndppd` config (`rule <prefix> { auto; }`) |
+| `/etc/ndppd-relay.conf` | `ndppd` config (`rule <prefix> { iface eth0; }`) |
 | `/etc/radvd-relay.conf` | `radvd` config (prefix, 1 h lifetime, no RDNSS) |
 | `/run/ipv6-relay.prefix` | last-seen prefix, used by `refresh` to detect a change |
 | `ipv6-relay.service` | oneshot: `setup` at boot, `teardown` on stop |
@@ -206,7 +209,8 @@ does **not** survive a reboot — put it in the agent's `setup` (or in
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `ndppd` exits immediately; log says *"Low prefix length (64 <= 120) when using 'static' method"* | `static` rule mode requires a prefix longer than /120 and refuses a whole `/64` | use `auto` (the agent already does) |
+| `ndppd` exits immediately; log says *"Low prefix length (64 <= 120) when using 'static' method"* | `static` rule mode requires a prefix longer than /120 and refuses a whole `/64` | use `iface <LAN leg>` (the agent already does) |
+| LAN-wide IPv6 loss (50–100 %), apps hang, but `ndppd`/`radvd` are `active` and `curl -6` fails while IPv4 is fine; on `ether2` you see NS floods with **almost no NA** | the `ndppd` rule uses `auto`, which never relays on this box (ndppd 0.2.4) — the modem's NS for LAN hosts go unanswered, so return traffic is dropped | set the rule to `iface eth0`, then `systemctl restart ndppd-relay`; verify with `ndisc6 -q -r 2 -w 900 <LAN-host-GUA> vmbr1` **from `.33`** — it must answer with the LXC WAN MAC `BC:24:11:9A:2C:95` |
 | After enabling the relay, `ip -6 route show default` is **empty**; LAN has IPv6 but no internet | enabling `all.forwarding=1` made the kernel drop the RA-learned default route; it only returns on the hub's *next* RA (up to ~10 min) | the agent sends its own Router Solicitation and waits (`ensure_default_route`), and refuses to advertise without it. Re-run `setup` |
 | `netdiag.sh` says **BLACKHOLE** but IPv6 actually works | on macOS `ping6 -t` is a *Node Information query*, not a timeout — it swallows the next argument as a hostname, so the check always fails | fixed in `netdiag.sh` via the `ping6_ok` helper; never use `ping6 -t` for a timeout |
 | LAN clients hold a stale `2a0e:…` address and hang | the relay/radvd stopped, but clients keep the last RA for up to the 1 h lifetime | flush the client: Mac `sudo networksetup -setv6off Wi-Fi && sudo networksetup -setv6automatic Wi-Fi`; Android: toggle Wi-Fi |
@@ -242,7 +246,14 @@ ndp -rn | grep -v utun          # default routers — must be only the LXC eth0 
 
 - **`ping6 -t` is not a timeout on macOS.** It is a Node Information query. Use
   the `ping6_ok` helper in `netdiag.sh`, or `ping -6`/`curl -6` with `--max-time`.
-- **`ndppd`'s `static` cannot do a `/64`** — it requires > `/120`. Use `auto`.
+- **`ndppd`'s `static` cannot do a `/64`** — it requires > `/120`. Use
+  `iface <LAN leg>` (§8).
+- **`ndppd`'s `auto` silently does nothing here (Oct 2026).** It is the obvious
+  choice — read `/proc/net/ipv6_route` and pick the outgoing interface — but on
+  this box (ndppd 0.2.4) it never actually relays: the modem's NS for LAN hosts
+  go unanswered, so return traffic is dropped and every LAN client sees
+  50–100 % loss (apps hang), with NS ≫ NA on `ether2`. Name the LAN leg
+  explicitly (`iface eth0`) — see the invariant and the §8 row.
 - **Enabling forwarding flushes RA routes.** Set `accept_ra=2` first, and expect
   the default route to need a fresh RA (or your own solicitation).
 - **`rdisc6` is the workhorse** — it both discovers the prefix and forces an RA

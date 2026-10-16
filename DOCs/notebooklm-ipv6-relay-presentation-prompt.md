@@ -126,10 +126,10 @@ SLIDE-BY-SLIDE OUTLINE
 15. The relay, mechanism by mechanism (table). WAN leg: accept_ra=2 and
     accept_ra_defrtr=1 to keep a default route on a forwarding host;
     accept_ra_pinfo=0 to keep the /64 off that leg; forwarding=1 to actually
-    relay. LAN leg: accept_ra=0, owns 2a0e:437:7b9b::/64. ndppd with an `auto`
-    rule on ether2 — it reads the routing table and answers the modem's
-    Neighbour Solicitations for LAN hosts with its own MAC, which is what makes
-    return traffic come back. radvd on eth0, no RDNSS.
+    relay. LAN leg: accept_ra=0, owns 2a0e:437:7b9b::/64. ndppd with an
+    `iface eth0` rule on ether2 — it answers the modem's Neighbour Solicitations
+    for LAN hosts with its own MAC, which is what makes return traffic come back.
+    radvd on eth0, no RDNSS.
 
 16. Security posture. The hub applies NO inbound IPv6 firewall of its own, so
     the internet could reach SSH, the Proxmox web UI and an open DNS resolver

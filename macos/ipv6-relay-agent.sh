@@ -155,10 +155,15 @@ setup() {
   cat > "$NDPPD_CONF" <<EOF
 # Managed by ipv6-relay.sh.  Answers the modem's Neighbor Solicitations for
 # LAN hosts on the WAN leg with our own MAC, so replies come back to us.
-# 'auto' = relay mode: ndppd reads the routing table, sees the /64 routed out
-# our LAN leg, forwards the modem's NS there and relays the answer back.
+#
+# The rule MUST name the LAN leg explicitly ('iface $LAN_IF'): ndppd 0.2.4's
+# 'auto' mode is supposed to pick it from the routing table, but here it
+# silently relays nothing: the modem's NS for LAN hosts go unanswered, so
+# inbound IPv6 is dropped and every client sees 50-100% packet loss (apps hang).
+# Verified Oct 2026 with ndisc6 from the WAN segment: 'auto' -> no reply,
+# 'iface' -> answers with our WAN MAC.  Do not "simplify" this back to 'auto'.
 # ('static' would answer without probing but ndppd refuses it below /121, so it
-# cannot be used for a whole /64 — verified against ndppd 0.2.4.)
+# cannot be used for a whole /64 — also verified against 0.2.4.)
 route-ttl 30000
 
 proxy $WAN_IF {
@@ -167,7 +172,7 @@ proxy $WAN_IF {
   ttl 30000
 
   rule $p {
-    auto
+    iface $LAN_IF
   }
 }
 EOF

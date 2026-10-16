@@ -167,7 +167,7 @@ two segments (which is exactly what broke in Oct 2026).
 | WAN leg | `accept_ra_pinfo=0` | The `/64` must **not** be on-link here; this is what prevents the Oct 2026 situation |
 | WAN leg | `all.forwarding=1` | The LXC forwards LAN ⇄ modem |
 | LAN leg | `accept_ra=0`, holds `2a0e:437:7b9b::/64` | We are the router here; never take an RA from our own radvd |
-| `ndppd` (`auto` rule) | on `ether2` | Answers the modem's Neighbour Solicitations for LAN addresses with our MAC, so replies come back to us |
+| `ndppd` (`iface eth0` rule) | on `ether2` | Answers the modem's Neighbour Solicitations for LAN addresses with our MAC, so replies come back to us. **Not `auto`** — on ndppd 0.2.4 `auto` silently relays nothing here (see `IPV6-RELAY.md` §11) |
 | `radvd` | on `eth0`, **no RDNSS** | Hands the prefix to LAN clients. Withholding RDNSS keeps the DHCPv4 resolver `192.168.1.1` — and therefore the IoT DNS hijack for `192.168.1.128/26` — fully intact |
 
 Why it is safe this time:
