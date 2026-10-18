@@ -192,6 +192,31 @@ Flash/OTA upload: `arduino-cli upload -p <port> --fqbn esp8266:esp8266:nodemcuv2
 - After first v2 flash: log rf_epoch spread per press → set W; verify ESP8266 SNTP accuracy
   on this LAN (expect ~1–10 ms).
 
+### RXB6 sensitivity — test log (2026-10-18, bench unit `rx-241002`)
+
+Protocol: set a line-count marker on `.77` (`buttonPressReceiver.sh.log`), user presses by
+hand, then count `0A1400a` lines per sender for that remote's code. Receptions ≈ sensitivity:
+every unit sends once per press on its first clean decode, and *debounced* lines are still
+logged, so the count is what each receiver actually heard. (Serial capture of the bench unit
+via `screen -L` is verified working — a board reset shows the full boot banner.)
+
+| test | remote | `nodeMCU-0` | `nodeMCU-1` | `rx-241002` | note |
+|---|---|---|---|---|---|
+| near | `4AA0D` b1 (kitchen column) | 13 | 19 | 23 | bench unit sits next to this switch → **not** a fair comparison |
+| far | `4A77D` b4 (BL-disimpegno) | 13 | 15 | **0** | opposite end of the house; bench heard nothing |
+
+Also measured (same near run): within one press the remote's repeated frames decode **70–270 ms**
+apart; between presses the gap is **1.9–6.7 s** → a fusion window of a few hundred ms merges
+receivers with wide margin, and `code[6]` jitters on *every* unit (see §3) so fusion must key
+on the normalized buttonID.
+
+**Caveats before drawing conclusions about the radio:** the bench unit still has the **coiled
+spring antenna** the RXB6 ships with (not a straight 17.3 cm ¼-wave) *and* sits beside a
+computer — both cost several dB. Next steps: (1) swap in a straight 17.3 cm wire, vertical,
+clear of metal, re-run the far test; (2) **co-located A/B** — run `rx-241002` headless on a USB
+charger beside a nodeMCU for a few hours and compare counts at identical geometry. Do **not**
+conclude the RXB6 is worse until (2) runs; a superhet RXB6 should out-hear the cheap modules.
+
 ## 6. Open questions
 - [ ] NTP source for receivers: LAN-local server (where?) vs WAN pool? Router LXC `.1`
       runs dnsmasq only; `.77` is NTP *client* — who becomes the LAN time master?
