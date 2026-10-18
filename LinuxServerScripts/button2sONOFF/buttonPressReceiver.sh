@@ -115,6 +115,7 @@ FUSION_COUNT=0
 FUSION_SEEN=""
 FUSION_FWD=0        # 1 if the group was actually forwarded to the FIFO
 
+CR=$'\r'            # receivers terminate their lines with CRLF; strip it on parse
 now_ms() { date +%s%3N; }
 
 flush_fusion() {
@@ -147,6 +148,12 @@ process_line() {
     # 3. v2 detection: field 3 is a UTC epoch-ms (>= 10^12), not millis()
     local f_hdr f_code f_ts f_recv
     read -r f_hdr f_code f_ts f_recv _ <<< "$button $raw_line"
+    # Receivers terminate lines with CRLF. Strip the stray CR from each field, or
+    # the receiver id keeps a trailing \r — harmless while it resolves in
+    # receivers.config, but it pollutes the fusion record ("via=nodeMCU-0^M@v1")
+    # whenever the id is unmapped and the raw id is used verbatim.
+    f_hdr=${f_hdr%"$CR"}; f_code=${f_code%"$CR"}
+    f_ts=${f_ts%"$CR"};   f_recv=${f_recv%"$CR"}
     local is_epoch=0
     if [[ "$f_hdr" == "$RFXCOM_HEADER" ]]; then
         case "$f_ts" in

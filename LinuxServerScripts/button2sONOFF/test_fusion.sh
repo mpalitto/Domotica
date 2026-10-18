@@ -123,6 +123,28 @@ LOG="$T/runD.log"; : > "$LOG"
 check "nothing forwarded" 0 "$(fwd)"
 check "no FUSED noise" 0 "$(fused_summaries)"
 
+# ---------------------------------------------------------------------------
+echo
+echo "=== Run E: CRLF-terminated lines must not leak the CR into the record ==="
+NOW_MS=1792400400000
+source "$SRC/buttonPressReceiver.sh"
+LOG="$T/runE.log"; : > "$LOG"
+
+{
+  # Real receivers end every line with CRLF, and an UNMAPPED receiver id is
+  # echoed verbatim into the fusion record — so the CR must be stripped or the
+  # record reads "nodeMCU-1\r@v1".
+  step 1792400400100 $'0A1400a F4AA0D0101 1792400400050 rx-241002\r'
+  step 1792400400200 $'0A1400a F4AA0D0101 392074320 nodeMCU-1\r'
+  # A different button closes (and flushes) the group, exactly as in real life.
+  step 1792400401000 $'0A1400a F4A85C0101 1792400400950 rx-241002\r'
+} > "$LOG" 2>&1
+
+check "one fusion summary emitted" 1 "$(fused_summaries)"
+check "fusion record has no stray CR" \
+    'FUSED 4AA0D1RFXCOM n=2 forwarded=1 via=rf-fridge@0ms,nodeMCU-1@v1' \
+    "$(grep '^FUSED ' "$LOG")"
+
 echo
 if (( fails == 0 )); then echo "ALL TESTS PASSED"; else echo "$fails TEST(S) FAILED"; fi
 rm -rf "$T"

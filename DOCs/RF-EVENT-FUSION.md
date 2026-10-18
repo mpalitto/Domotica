@@ -1,11 +1,12 @@
 # RF Event Fusion — Synchronized Receiver Timestamps
 
 **Project start:** 2026-10-18
-**Status:** v2.1 FIRMWARE DEPLOYED **and SERVER-SIDE FUSION DELIVERED** (epoch fusion live in
-`buttonPressReceiver.sh`, unit-tested + smoke-tested on `.77`). Migrated to v2 so far:
-`rx-241002` (fridge) and `rx-55d68f` (laundry — the former `nodeMCU-1`, flashed 2026-10-18).
-Still on v1: **`nodeMCU-0`** only. Pending: flash `nodeMCU-0`, then flip `FUSION_ENABLED=1`.
-See §3 "Server fusion (as built)" and §9 "Next".
+**Status:** FIRMWARE **v2.2** DEPLOYED **and SERVER-SIDE FUSION DELIVERED** (epoch fusion live in
+`buttonPressReceiver.sh`, unit-tested + smoke-tested on `.77`). Migrated to v2: `rx-241002`
+(fridge, still on v2.1) and `rx-55d68f` (laundry — the former `nodeMCU-1`, flashed 2026-10-18).
+Still on v1: **`nodeMCU-0`** only. **v2.2 fixes a ~13 % silent message loss** caused by line
+framing (§7) — flash it onto the remaining units. Pending: flash `nodeMCU-0`, then flip
+`FUSION_ENABLED=1`. See §3 "Server fusion (as built)" and §9 "Next".
 **Owner:** Matteo
 **Read this first** in any future session before touching RF receiver code or `buttonPressReceiver.sh`.
 
@@ -305,13 +306,33 @@ conclude the RXB6 is worse until (2) runs; a superhet RXB6 should out-hear the c
       still possible later via `FUSION_ENABLED`/window tuning, but nothing needs 2-of-N today.
 - [ ] Does `managerLayer.js` want the fused event record (code, t, seen-by, latencies)? Today it
       only gets the normalized `buttonID`, so the health data lives in the receiver log.
-- [ ] Are there really receivers named `nodeMCU-00` / `nodeMCU-10` in the log, or is that a
-      TCP-coalescence artifact? (Check before assuming 4 receivers.)
+- [x] **RESOLVED 2026-10-18 — no such receivers exist.** `nodeMCU-00` / `nodeMCU-10` were a
+      TCP-framing artifact, not extra boxes: two messages had been concatenated into one line.
+      See §7 "Line framing". Do not go looking for a fourth receiver.
 - [ ] `identify.sh` listener design: replace `socat -u TCP-LISTEN:1234` with a
       bidirectional exec-wrapper (per-connection FIFO for outbound commands), still bash.
       Needs care: must not break the `while read` pipeline in `buttonPressReceiver.sh`.
 
 ## 7. Discovered issues / fix list (this session, 2026-10-18)
+- [x] **Line framing: ~13 % of receptions were silently dropped (FIXED 2026-10-18 — firmware v2.2
+      + server-side CR strip).** `espClient.println()` issues the payload and the `\r\n`
+      terminator as **two separate writes**, i.e. potentially two TCP segments. Server-side one
+      `socat` child per connection writes into a *single shared* pipe
+      (`socat -u TCP-LISTEN:…,reuseaddr,fork STDOUT`), so when two receivers answered the same
+      press their chunks could interleave: the second receiver's message landed **inside** the
+      first receiver's line, between its payload and its terminator. The positional parser then
+      consumed only the first message and **silently dropped the other**, and the stranded
+      terminator surfaced as a junk line (`^M` → `buttonID: INVALID`).
+      Measured in `logs/buttonPressReceiver.sh.log`: **2 992 of 22 527 receptions (~13 %)**.
+      This is also the explanation for the phantom `nodeMCU-00` / `nodeMCU-10` ids (§6).
+      Fix, both halves:
+      - firmware **v2.2**: `sendLine()` writes payload+terminator in ONE `write()`; used for RF
+        data, the connect hello and IDENTIFY. **Do not reintroduce `println()` on the socket** —
+        the comment above `sendLine()` carries the full story.
+      - `buttonPressReceiver.sh`: strip the stray `\r` from the parsed fields (`CR=$'\r'`), which
+        otherwise leaked into the fusion record (`via=nodeMCU-0\r@v1`) whenever an *unmapped*
+        receiver id was echoed verbatim.
+      Regression test: `test_fusion.sh` Run E.
 - [x] **Firmware decode bug (FIXED 2026-10-18).** The ESP8266 "refactor" replaced the original
       YUN decode (`notMantained/YUN-LWRF-receiver-v0.2`, 9 nibbles + `1000-→0100`,
       `10F0-→1002`, `12F2-→1003`, `14F2-→1005`, …) with a truncated 6-nibble buffer + a

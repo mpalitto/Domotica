@@ -1,12 +1,16 @@
 /*
   ESP8266 RF 433MHz Receiver
-  v2.1 — RF Event Fusion update (see DOCs/RF-EVENT-FUSION.md):
+  v2.2 — RF Event Fusion update (see DOCs/RF-EVENT-FUSION.md):
     - SNTP-synced UTC epoch-ms of the first RF pulse (message field 3)
     - Identity derived from chip id: field 4 = "rx-XXXXXX" (friendly names live
       server-side in receivers.config, never baked into firmware)
     - ArduinoOTA (password in secrets.h) — future updates over WiFi
     - IDENTIFY: server sends "ID" down the existing TCP connection → LED blinks
     - WiFi creds + OTA password + NTP servers in gitignored secrets.h
+    - v2.2: every line is framed in a SINGLE write (see sendLine()). The previous
+      println() sent payload and terminator as two writes/two TCP segments, and
+      ~13% of receptions were lost when two receivers' chunks interleaved in the
+      server's shared pipe; see sendLine() for the full story.
   Replaces Arduino YUN receiver for LightwaveRF signals
 */
 
@@ -203,6 +207,42 @@ void setupOTA() {
 // ============================================================================
 // SOCKET CONNECTION MANAGEMENT
 // ============================================================================
+// Write ONE complete line — payload + line terminator — in a single write().
+//
+// Do NOT replace this with println(): the core's println() issues the payload
+// and the "\r\n" terminator as TWO separate writes, i.e. potentially two TCP
+// segments. Server-side a single socat child per connection writes into ONE
+// shared pipe (`socat -u TCP-LISTEN:...,reuseaddr,fork STDOUT`), so when two
+// receivers answer the same press their chunks can interleave: the later
+// receiver's message lands *inside* the earlier receiver's line, between its
+// payload and its terminator, and the positional parser silently drops it.
+// Measured 2026-10-18: 2 992 of 22 527 receptions (~13 %) were lost this way.
+// One write per frame keeps every line atomic.
+bool sendLine(const char* payload) {
+  char line[160];
+  int n = snprintf(line, sizeof(line), "%s\r\n", payload);
+  if (n < 0 || (size_t)n >= sizeof(line)) {
+    Serial.println("sendLine: message too long");
+    return false;
+  }
+  size_t len = (size_t)n, off = 0;
+  unsigned long start = millis();
+  while (off < len) {
+    size_t w = espClient.write((const uint8_t*)line + off, len - off);
+    if (w == 0) {
+      if (!espClient.connected() || millis() - start > 1000) break;
+      delay(2);
+      continue;
+    }
+    off += w;
+    start = millis();
+  }
+  if (off == len) return true;
+  Serial.println("sendLine: write failed");
+  espClient.stop();
+  return false;
+}
+
 bool ensureWiFiConnection() {
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("WiFi disconnected. Reconnecting...");
@@ -228,7 +268,7 @@ bool ensureSocketConnection() {
 
   if (espClient.connect(SERVER_HOST, SERVER_PORT)) {
     Serial.println("Socket connected successfully!");
-    espClient.println(String(receiverId) + " connected");
+    sendLine((String(receiverId) + " connected").c_str());
     return true;
   } else {
     Serial.println("Socket connection failed!");
@@ -259,7 +299,7 @@ void handleIncoming() {
       digitalWrite(LED_BUILTIN, LOW);   delay(80);   // LOW = ON
       digitalWrite(LED_BUILTIN, HIGH);  delay(120);
     }
-    espClient.println(String(receiverId) + " IDENTIFY OK");
+    sendLine((String(receiverId) + " IDENTIFY OK").c_str());
   }
 }
 
@@ -272,15 +312,12 @@ bool sendDataToServer(const char* data) {
     return false;
   }
 
-  if (espClient.println(data)) {
+  if (sendLine(data)) {
     Serial.print("Successfully sent: ");
     Serial.println(data);
     return true;
-  } else {
-    Serial.println("Failed to send data");
-    espClient.stop();
-    return false;
   }
+  return false;
 }
 
 // ============================================================================
@@ -495,7 +532,7 @@ void setup() {
   snprintf(receiverId, sizeof(receiverId), "rx-%06x", ESP.getChipId());
 
   Serial.println("\n\n=== ESP8266 RF 433MHz Receiver ===");
-  Serial.print("Version: 2.1 (RF Event Fusion)   id: ");
+  Serial.print("Version: 2.2 (RF Event Fusion)   id: ");
   Serial.println(receiverId);
 
   initPulseBuffer();
