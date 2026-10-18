@@ -91,8 +91,13 @@ FIFO (logs/button_fifo) → managerLayer.js (:7777) → WiFi-first / RF-fallback
 `preprocess_rfxcom.sh` reads the *whole line with spaces* at fixed positions, so field 2 must
 be 10 chars: `AAAAAA` (address) + `T` + `BBB` where, from `raw[9:14]`/`raw[14:17]`/`raw[17:1]`,
 `SWITCH_ID = code[1:6]`, `BUTTON_TYPE = code[6:9]`, `BUTTON_NUMBER = code[9]`.
-- `BUTTON_TYPE ∈ {010,110,100,000}` is **validated but never used**; `code[6]` is a raw RF bit
-  (deployed units emit both `…1101` and `…0101` for the same button).
+- `BUTTON_TYPE ∈ {010,110,100,000}` is **validated but never used**; `code[6]` is a *raw,
+  jittery* RF bit. Measured (2026-10-18, 13+ presses of kitchen-column button 1, one press
+  seen by all three units): `nodeMCU-0` 13×`…1101`; `nodeMCU-1` 17×`…1101` + 2×`…0101`;
+  bench `rx-241002` (RXB6 @3.3 V) 9×`…1101` + 14×`…0101` — i.e. it flips on **every**
+  receiver and **must not** be used for identity. (Same run: `rx-241002` sent 23 events vs
+  `nodeMCU-0`'s 13 → the 3.3 V RXB6 is in spec and at least as sensitive as the deployed units,
+  so bit-level jitter here is decoder variance, not a power problem.)
 - **The button is `code[9]`** and the routing key is `code[1:6] + code[9]` (e.g. `4AA0D` + `1`).
 - ⇒ **Fuse on the normalized buttonID, not the raw code string.**
 
