@@ -1,5 +1,20 @@
 # Agent Notes
 
+## Active Project — RF Event Fusion (started Oct 2026)
+
+- **Goal**: SNTP-synchronized epoch-ms timestamps in the RF receiver messages
+  (`Arduino/RFreceiver_esp8266`) → server-side event fusion in
+  `button2sONOFF/buttonPressReceiver.sh`: one button press = one logical event + per-receiver
+  latency/health data. Replaces the current 2 s debounce hack and the dormant
+  `socket.js` offset-calibration.
+- **Decision**: Option A — `configTime()` SNTP on the ESP8266, field 3 of the message becomes
+  UTC epoch-ms of the first RF pulse (`0` or small value = legacy v1 receiver → old debounce
+  path; server accepts both during rollout).
+- **Status (2026-10-18)**: design decided; firmware v2 not yet written/flashed (nodeMCU-0/1
+  still v1). Server must stay backward-compatible until all receivers are updated.
+- **Read `DOCs/RF-EVENT-FUSION.md` first** — it is the source of truth (design, rollout plan,
+  open questions, fix list, resume commands).
+
 ## IoT Controller (house-map WEB UI) — `.77:3000`
 
 - Runs on `192.168.1.77:3000` inside the `IoT-WEBui` `screen` session, launched by `LinuxServerScripts/startIoT-WEBui.sh` (idempotent: kills+recreates the session).
