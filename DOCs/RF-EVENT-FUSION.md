@@ -1,10 +1,11 @@
 # RF Event Fusion — Synchronized Receiver Timestamps
 
 **Project start:** 2026-10-18
-**Status:** v2.1 FIRMWARE DEPLOYED (bench → fridge, `rx-241002`) **and SERVER-SIDE FUSION
-DELIVERED** (epoch fusion live in `buttonPressReceiver.sh`, unit-tested + smoke-tested on `.77`).
-Pending: flash the deployed nodeMCUs to v2 (they keep working on v1 meanwhile), then flip
-`FUSION_ENABLED=1`. See §3 "Server fusion (as built)" and §9 "Next".
+**Status:** v2.1 FIRMWARE DEPLOYED **and SERVER-SIDE FUSION DELIVERED** (epoch fusion live in
+`buttonPressReceiver.sh`, unit-tested + smoke-tested on `.77`). Migrated to v2 so far:
+`rx-241002` (fridge) and `rx-55d68f` (laundry — the former `nodeMCU-1`, flashed 2026-10-18).
+Still on v1: **`nodeMCU-0`** only. Pending: flash `nodeMCU-0`, then flip `FUSION_ENABLED=1`.
+See §3 "Server fusion (as built)" and §9 "Next".
 **Owner:** Matteo
 **Read this first** in any future session before touching RF receiver code or `buttonPressReceiver.sh`.
 
@@ -231,9 +232,13 @@ path**, and invalid input. Runs green on macOS and on `.77` (bash 5.2).
 2. ✅ **Measure** (§5) with one v2 + two v1 receivers — done, see §5 (also gave the window `W`).
 3. ✅ **Server-side fusion** built, unit-tested and deployed (§3). The deployed nodeMCUs still
    run v1 and are untouched by it.
-4. ⬜ **Flash** remaining receivers to v2 (physical access required — the slow part; server stays
+4. 🔄 **Flash** remaining receivers to v2 (physical access required — the slow part; server stays
    compatible meanwhile). **Then** flip `FUSION_ENABLED=1` in `buttonPressReceiver.sh` (or export
    it) and restart the receiver.
+   → 2026-10-18: the laundry unit (`nodeMCU-1`, IP `.208`) was taken down, the deployed v1
+   firmware **backed up** (`esptool read_flash`, full 4 MB; the sketch itself was also recovered
+   from git — see §8), reflashed to v2.1 and mapped as **`rx-55d68f : rf-laundry`**.
+   Remaining: `nodeMCU-0`.
 5. ⬜ **Cleanup:** after all v2, optionally remove the legacy debounce path.
 
 ### Operational note — receivers reconnect **lazily**
@@ -245,6 +250,14 @@ i.e. a receiver opens its TCP connection at boot and, if that socket is broken, 
 regression — just do not read "no connections" as "receivers are down". The KINETIC ESP32
 reconnects on its own (it retries and re-sends its boot banner, which the RFXCOM preprocessor
 correctly logs as `INVALID` and ignores).
+
+**Zombie sockets (cosmetic, 2026-10-18).** There is no TCP keepalive and no app-level heartbeat,
+so a receiver that is power-cut or reset leaves its server-side connection `ESTAB` forever, each
+one holding a `socat` child (roughly one per reboot). `ss` therefore never proves liveness — the
+log (and the per-receiver `lag`) does. The listeners use `fork`+`reuseaddr`, so zombies never
+block or starve new connections; they are just clutter in `ps`. Future nicety: SO_KEEPALIVE or an
+idle timeout on the listener to reap them. Note v2.1 also sends a `<rx-id> connected` hello line
+on connect (visible in the log); the RFXCOM preprocessor logs it as `INVALID` and ignores it.
 
 ## 5. Pre-flight measurements (can start NOW on v1 firmware)
 - Log every message (including debounced ones) with server arrival time → compute
@@ -344,12 +357,25 @@ conclude the RXB6 is worse until (2) runs; a superhet RXB6 should out-hear the c
    (+ `test_fusion.sh` for the fusion logic).
    - **`rx-241002`** = D1 mini + RXB6, mapped to `rf-fridge` in `config/receivers.config`,
      installed at the fridge, IP `192.168.1.231`.
-   - `nodeMCU-0` / `nodeMCU-1` still run **v1** (raw `millis()`; the `rx-XXXXXX` they send is
-     *not* really a chip id) and are untouched. Their RF module is still unverified.
+   - **`rx-55d68f`** = nodeMCU (the laundry unit, formerly `nodeMCU-1`), IP `192.168.1.208`,
+     reflashed to v2.1 on 2026-10-18, mapped to `rf-laundry`. MAC `cc:50:e3:55:d6:8f`;
+     `rx-55d68f` is `ESP.getChipId()` = the MAC's low 24 bits, so **the id can be predicted from
+     `esptool flash_id` before flashing** (handy for writing the `receivers.config` line).
+   - `nodeMCU-0` still runs **v1** (raw `millis()`; the `nodeMCU-0` string it sends is a hardcoded
+     name, *not* a chip id) and is untouched.
    - `ESP32_RX_01` = the KINETIC receiver (ESP32 + CC1101), on `:5678`.
-   - Serial capture on macOS: `screen -L -dmS cap /dev/cu.usbserial-* 115200`, then read
-     `screenlog.0`. `arduino-cli monitor` reads zero bytes here, and opening the port does
-     **not** reliably reset the board — have the sketch print on a loop instead.
+   - **The deployed v1 sketch source is in this repo's history** —
+     `git show 196e049^:Arduino/RFreceiver_esp8266/RFreceiver_esp8266.ino`. It is what runs on
+     `nodeMCU-0` too: serial banner `connection YESSS`, hardcodes its own name, **RF data on
+     GPIO4 / D2**, single-pin OOK module (same pin as v2.1, so v2.1 drops straight in). Commit
+     `196e049` ("Refactor ESP8266 RF receiver code") later broke the LightwaveRF decode, but the
+     deployed units were never reflashed with it. Pre-flash binary dumps per unit are kept in
+     `~/.local/share/domotica/receiver-fw-backups/` (laundry: 4 MB, md5
+     `6e72b82a9f3ae1a050d8b9d81c199a83`).
+   - ⚠️ **Security:** that historical sketch hardcodes the WiFi SSID **and password** in plaintext,
+     and it is already in this public repo's git history — worth rotating the WiFi PSK at some point.
+   - Serial capture on macOS (`serialid.py` toggles DTR/RTS to force a boot banner; opening the
+     port alone does not reliably reset the board). `arduino-cli monitor` reads zero bytes here.
 5. Toolchain on the Mac (installed 2026-10-18): `arduino-cli` + `esp8266:esp8266` core 3.1.2.
    - compile: `arduino-cli compile --fqbn esp8266:esp8266:nodemcuv2 Arduino/RFreceiver_esp8266/`
    - USB flash: `arduino-cli upload -p /dev/cu.usbserial-* --fqbn esp8266:esp8266:nodemcuv2 Arduino/RFreceiver_esp8266/`
@@ -372,8 +398,10 @@ and never needs the manager restarted.
 
 ## 9. Next
 
-1. **Flash the deployed nodeMCUs to v2** (take each down, USB-flash, read `rx-XXXXXX` from the
-   serial banner, add its `receivers.config` line, put it back). Server keeps working on v1.
+1. **Flash `nodeMCU-0` to v2** (the only v1 unit left — take it down, USB-flash, read `rx-XXXXXX`
+   from the serial banner, add its `receivers.config` line, put it back). Optional but wise:
+   `esptool read_flash 0 0x400000` backup first, as done for the laundry unit. Server keeps
+   working on v1 meanwhile.
 2. **Then** enable the tight window: `FUSION_ENABLED=1` + restart the receiver, and watch for
    `FUSED … n=2`/`n=3` lines with sensible `skew`/`lag` to confirm fusion end-to-end.
 3. Watch `lag` for a day — a receiver whose `lag` is huge or negative is not NTP-synced.
