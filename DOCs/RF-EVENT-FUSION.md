@@ -55,8 +55,23 @@ FIFO (logs/button_fifo) → managerLayer.js (:7777) → WiFi-first / RF-fallback
   ```
 - **`socket.js` (port 1234) is DORMANT** — it once did passive per-receiver offset
   calibration (α-filter, per-code offsets). Not running; `RFreceiver.offset` never existed.
-- Firmware: `Arduino/RFreceiver_esp8266/` (v2.0 in repo — verify against what is actually
-  flashed before editing; live codes show no `-` separator, e.g. `F4B38D1101`).
+- Firmware: `Arduino/RFreceiver_esp8266/` (v2.1 = SNTP epoch + chip-id identity). **But the
+  deployed nodeMCUs do not run this sketch** — see the hardware note below.
+- **Receiver hardware (discovered 2026-10-18).** The deployed nodeMCUs carry an **E07-M1101D**
+  — a TI **CC1101** 433 MHz transceiver, SPI-driven (CSN/SCK/MOSI/MISO) with `GDO0 → GPIO13 (D7)`
+  and `GDO2` unconnected — *not* a single-pin OOK module. So their firmware is a CC1101/SPI
+  sketch, and `RFreceiver_esp8266.ino` (which does `pulseIn` on one data pin) **cannot be
+  flashed onto those boards as-is**. The bench/kitchen v2 unit is a D1 mini + **RXB6** (simple
+  OOK superhet), which does work.
+  - ⇒ Two upgrade paths: **(a)** leave the CC1101 boards on v1 and add v2 receivers built from
+    SPI-free OOK modules — the server already runs v1 + v2 together (verified: one press parsed
+    from `rx-241002` *and* both nodeMCUs); **(b)** port v2.1 to the CC1101 — configure
+    433.92 MHz **ASK/OOK asynchronous serial mode** so GDO0 emits the raw demodulated envelope,
+    which the existing `decodePulseData()` then consumes unchanged (and you get **RSSI** for
+    free). Path (b) reuses clearly better radios (real front-end + SMA antenna).
+- **Second receiver family in the log:** `ESP32_RX_01` speaks a richer protocol —
+  `KINETIC DEFF2E BUTTON_2 ESP32_RX_01 -84dBm` — i.e. KINETIC remotes **with RSSI**. Source
+  unknown; if it is ours it is the natural foundation for the per-reception health data.
 
 ---
 
