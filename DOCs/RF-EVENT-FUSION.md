@@ -2,11 +2,13 @@
 
 **Project start:** 2026-10-18
 **Status:** FIRMWARE **v2.2** DEPLOYED **and SERVER-SIDE FUSION DELIVERED** (epoch fusion live in
-`buttonPressReceiver.sh`, unit-tested + smoke-tested on `.77`). Migrated to v2: `rx-241002`
-(fridge, still on v2.1) and `rx-55d68f` (laundry — the former `nodeMCU-1`, flashed 2026-10-18).
-Still on v1: **`nodeMCU-0`** only. **v2.2 fixes a ~13 % silent message loss** caused by line
-framing (§7) — flash it onto the remaining units. Pending: flash `nodeMCU-0`, then flip
-`FUSION_ENABLED=1`. See §3 "Server fusion (as built)" and §9 "Next".
+`buttonPressReceiver.sh`, unit-tested + smoke-tested on `.77`). On v2: `rx-55d68f` (laundry — the
+former `nodeMCU-1`; flashed 2026-10-18, **OTA'd to v2.2 from `.77` and wire-verified**) and
+`rx-241002` (fridge — **still on v2.1**, its OTA listener is wedged so it needs a USB reflash:
+§7 "OTA", §9). Still on v1: **`nodeMCU-0`** only = **`rx-058ef5`** (id predicted from its MAC,
+named `rf-central`; v1 has **no OTA at all**, so USB is mandatory for it). It is the last blocker
+for `FUSION_ENABLED=1`. **v2.2 fixes a ~13 % silent message loss** caused by line framing (§7).
+See §3 "Server fusion (as built)" and §9 "Next".
 **Owner:** Matteo
 **Read this first** in any future session before touching RF receiver code or `buttonPressReceiver.sh`.
 
@@ -179,8 +181,18 @@ buttonID `4AA0D 1 RFXCOM` — identical to the legacy units; it was only **debou
 | IRAM       | 60,375 (92%) | 60,919 (92%) | +544 B — OTA lives in flash |
 | RAM globals| 30.1 KB (37%) | 31.1 KB (38%) | +1 KB |
 
-Flash/OTA upload: `arduino-cli upload -p <port> --fqbn esp8266:esp8266:nodemcuv2 Arduino/RFreceiver_esp8266/`
-(afterwards: `arduino-cli upload -p <port> --fqbn esp8266:esp8266:nodemcuv2 --input-dir ...` or `espota.py -r` for OTA).
+**v2.2 (2026-10-18)** — one change: `sendLine()` frames every outgoing line (payload **+** `\r\n`)
+in a **single `write()`**, fixing the ~13 % interleaving loss (§7). Nothing else changed. OTA'd to
+`rx-55d68f` from `.77` and wire-verified with `tools/rf-frame-check.py`.
+
+Flash/OTA upload (verified recipes):
+- **USB:** `arduino-cli upload -p /dev/cu.usbserial-* --fqbn esp8266:esp8266:nodemcuv2 Arduino/RFreceiver_esp8266/`
+- **OTA (needs a v2 firmware already running — v1 has no OTA at all):** run `espota.py` **from
+  `.77`**, never from the Mac Wi-Fi (§7 "OTA"):
+  `arduino-cli compile --fqbn esp8266:esp8266:nodemcuv2 --output-dir /tmp/rfbin Arduino/RFreceiver_esp8266/`
+  → copy `RFreceiver_esp8266.ino.bin` and the core's `tools/espota.py` to `.77:/tmp` →
+  `python3 /tmp/espota.py -i <receiver-ip> -p 8266 -a '<OTA_PASSWORD from secrets.h>' -f /tmp/rfbin/RFreceiver_esp8266.ino.bin`
+  (retry a few times; success prints `Result: OK`).
 
 ### Server fusion (as built 2026-10-18 — bash only, in `buttonPressReceiver.sh`)
 Live on `.77` since 21:50. `BASE_DIR` is now overridable and the listeners only start when the
@@ -312,6 +324,11 @@ conclude the RXB6 is worse until (2) runs; a superhet RXB6 should out-hear the c
 - [ ] `identify.sh` listener design: replace `socat -u TCP-LISTEN:1234` with a
       bidirectional exec-wrapper (per-connection FIFO for outbound commands), still bash.
       Needs care: must not break the `while read` pipeline in `buttonPressReceiver.sh`.
+      **Firmware half already exists**: v2.x `handleIncoming()` reads a line from the socket and
+      answers `ID` with an LED blink + `<rx-id> IDENTIFY OK` (TCP is already bidirectional — only
+      the server wrapper is missing). Nice-to-have while we're there: put the **firmware version**
+      in the reply, so the whole fleet can be audited remotely (that is what would have made the
+      fridge's wedged-OTA state visible without a packet sniffer).
 
 ## 7. Discovered issues / fix list (this session, 2026-10-18)
 - [x] **Line framing: ~13 % of receptions were silently dropped (FIXED 2026-10-18 — firmware v2.2
@@ -333,6 +350,37 @@ conclude the RXB6 is worse until (2) runs; a superhet RXB6 should out-hear the c
         otherwise leaked into the fusion record (`via=nodeMCU-0\r@v1`) whenever an *unmapped*
         receiver id was echoed verbatim.
       Regression test: `test_fusion.sh` Run E.
+      **Wire-verified 2026-10-18** (raw-socket sniffer on `.77` = `tools/rf-frame-check.py`,
+      because `.77` has no `tcpdump`): a reset of the v2.2 bench board produced
+      `192.168.1.208:52051 -> 192.168.1.77:1234  flags=0x18 len=21  payload=b'rx-55d68f connected\r\n'`
+      — the whole line, terminator included, in **one** TCP segment (the same `sendLine()` path
+      RF data uses). Do not reintroduce a second write per line.
+- [x] **OTA: works, but it is a one-shot protocol with two nasty failure modes (2026-10-18,
+      verified from `.77`).** `espota.py` (bundled with core 3.1.2) does
+      invitation → `AUTH <nonce>` → `AUTH <cnonce> <digest>` → `OK` over **UDP 8266**, then the
+      image moves over TCP; on success the ESP prints `Result: OK` (the `Update` library
+      md5-checks the image, so `Result: OK` really does prove the new firmware is installed).
+      1. **Run it from `.77`, not the Mac.** The Mac (`.235`, Wi-Fi) sent invitations the ESP
+         answered, but the reply never got back to the Mac (`No Answer`); the identical command
+         from `.77` (wired) succeeded on the 1st/2nd try. Copy `espota.py` + the `.bin` to
+         `.77:/tmp` and run `python3 /tmp/espota.py -i <ip> -p 8266 -a <OTA_PASSWORD> -f <bin>`
+         (its own `-a`, not arduino-cli's `--auth`).
+      2. **A lost `AUTH` datagram wedges the state machine.** The ESP is left in `OTA_WAITAUTH`;
+         the *next* invitation is then silently swallowed (`cmd != U_AUTH` → `_state = OTA_IDLE;
+         return;` — no reply at all). Retrying the whole command clears it: the bench board took
+         2 attempts, and `08:42`→`08:43` failures were pure UDP loss on the sleepy Wi-Fi.
+      3. **If the transfer dies after `Update.begin()`, the OTA listener can stay dead for good**
+         — the `UdpContext` is never re-armed, so the unit answers **nothing** on UDP 8266
+         (the fridge unit ignored **16** invitations over ~6 min). **Only a reboot / power cycle
+         clears it.** ⇒ Never start an OTA you can't finish, and for a unit in the field treat
+         **USB as the deterministic path**, OTA as the convenience. A wedged unit is otherwise
+         still a perfectly healthy *receiver* (the fridge kept feeding `.77:1234` throughout).
+      Diagnose with `tools/rf-frame-check.py --udp 8266` (dumps the handshake) or by repeating a
+      hand-rolled invitation (see §8).
+- [x] **RESOLVED 2026-10-18 — v1 firmware has NO OTA at all.** Every revision of
+      `RFreceiver_esp8266.ino` back to the original port (5 revisions checked) contains **zero**
+      `ArduinoOTA` references, so `nodeMCU-0` on v1 cannot be updated over the air — Bluetooth /
+      Wi-Fi flashing is impossible and **USB is mandatory** for it.
 - [x] **Firmware decode bug (FIXED 2026-10-18).** The ESP8266 "refactor" replaced the original
       YUN decode (`notMantained/YUN-LWRF-receiver-v0.2`, 9 nibbles + `1000-→0100`,
       `10F0-→1002`, `12F2-→1003`, `14F2-→1005`, …) with a truncated 6-nibble buffer + a
@@ -377,13 +425,20 @@ conclude the RXB6 is worse until (2) runs; a superhet RXB6 should out-hear the c
    server in `LinuxServerScripts/button2sONOFF/buttonPressReceiver.sh`
    (+ `test_fusion.sh` for the fusion logic).
    - **`rx-241002`** = D1 mini + RXB6, mapped to `rf-fridge` in `config/receivers.config`,
-     installed at the fridge, IP `192.168.1.231`.
+     installed at the fridge, IP `192.168.1.231`, MAC `bc:dd:c2:24:10:02`. Still on **v2.1**:
+     its OTA listener is wedged (§7) → **USB reflash to v2.2 pending**. While wedged it is
+     OTA-deaf but remains a fully working receiver.
    - **`rx-55d68f`** = nodeMCU (the laundry unit, formerly `nodeMCU-1`), IP `192.168.1.208`,
-     reflashed to v2.1 on 2026-10-18, mapped to `rf-laundry`. MAC `cc:50:e3:55:d6:8f`;
-     `rx-55d68f` is `ESP.getChipId()` = the MAC's low 24 bits, so **the id can be predicted from
-     `esptool flash_id` before flashing** (handy for writing the `receivers.config` line).
-   - `nodeMCU-0` still runs **v1** (raw `millis()`; the `nodeMCU-0` string it sends is a hardcoded
-     name, *not* a chip id) and is untouched.
+     flashed 2026-10-18, mapped to `rf-laundry`; **now on v2.2** (OTA'd from `.77`, framing
+     wire-verified). MAC `cc:50:e3:55:d6:8f`.
+   - **`nodeMCU-0`** still runs **v1** (raw `millis()`; the `nodeMCU-0` string it sends is a
+     hardcoded name, *not* a chip id), IP `192.168.1.240`, MAC `ec:fa:bc:05:8e:f5` ⇒ its id will
+     be **`rx-058ef5`**, already staged in `config/receivers.config` as **`rf-central`** (it hears
+     nearly every remote: master corridor, Nicolò, kitchen, bilocale). v1 has **no OTA**, so USB is
+     mandatory. The config line is inert until the board speaks v2.
+   - **ids are predictable**: `rx-XXXXXX` = `ESP.getChipId()` = the MAC's **low 24 bits**, so the
+     `receivers.config` line can be written from `ip neigh` / `esptool.py flash_id` **before** the
+     board is even plugged in (that is how `rx-058ef5` was pre-staged).
    - `ESP32_RX_01` = the KINETIC receiver (ESP32 + CC1101), on `:5678`.
    - **The deployed v1 sketch source is in this repo's history** —
      `git show 196e049^:Arduino/RFreceiver_esp8266/RFreceiver_esp8266.ino`. It is what runs on
@@ -419,16 +474,25 @@ and never needs the manager restarted.
 
 ## 9. Next
 
-1. **Flash `nodeMCU-0` to v2** (the only v1 unit left — take it down, USB-flash, read `rx-XXXXXX`
-   from the serial banner, add its `receivers.config` line, put it back). Optional but wise:
-   `esptool read_flash 0 0x400000` backup first, as done for the laundry unit. Server keeps
-   working on v1 meanwhile.
-2. **Then** enable the tight window: `FUSION_ENABLED=1` + restart the receiver, and watch for
-   `FUSED … n=2`/`n=3` lines with sensible `skew`/`lag` to confirm fusion end-to-end.
-3. Watch `lag` for a day — a receiver whose `lag` is huge or negative is not NTP-synced.
-4. Optional (still open from §5): straight 17.3 cm ¼-wave antenna on the fridge unit + a
+1. **USB-flash the fridge unit `rx-241002` to v2.2** — the unit is being brought to the Mac;
+   its OTA listener is wedged (§7 "OTA") so USB is the only path. No flash backup needed: v2.1 is
+   reproducible from this repo and the only local secret is `secrets.h`, already on the Mac.
+   `arduino-cli upload -p /dev/cu.usbserial-* --fqbn esp8266:esp8266:nodemcuv2 Arduino/RFreceiver_esp8266/`
+   (if several boards are attached, tell them apart by MAC with `esptool.py flash_id`).
+2. **Flash `nodeMCU-0` = `rx-058ef5` / `rf-central` to v2.2** — take it down, USB-flash (v1 has no
+   OTA at all), confirm the id from the boot banner, put it back. Its `receivers.config` line is
+   already staged. Optional but wise: `esptool read_flash 0 0x400000` backup first, as for laundry.
+3. **Then** flip the tight window: `FUSION_ENABLED=1` **and restart the receiver** (§8 restart
+   recipe — quit the screen session *and* kill the leftover `socat`), then watch `FUSED … n=2/n=3`
+   with sensible `skew`/`lag`. Note grouping already runs today; with `FUSION_ENABLED=0` the legacy
+   2 s debounce still gates forwarding, which is what stops a v1+v2 pair from toggling twice.
+4. Watch `lag` for a day — a receiver whose `lag` is huge or negative is not NTP-synced.
+5. Optional (still open from §5): straight 17.3 cm ¼-wave antenna on the fridge unit + a
    co-located A/B against a nodeMCU, to settle RXB6 sensitivity properly.
-5. Optional: the ESP32/CC1101 route — add the LightwaveRF decode to `ESP32_RX_01`'s firmware
+6. Optional: the ESP32/CC1101 route — add the LightwaveRF decode to `ESP32_RX_01`'s firmware
    (keeping KINETIC working) and get **RSSI** into the fusion record. The firmware source is
    **not in this repo** — it must be recovered from wherever it was written (the flashed binary
    can only be dumped, not decompiled to source).
+7. Optional: `identify.sh` (bidirectional `socat` wrapper) — the firmware half already exists.
+   Also **re-power the ESP32 KINETIC (`.212`)**: while it is off, KINETIC remotes `AB6EDE`
+   (master-bath switch) and `CCFF0E` (Nicolò-bath switch) are dead.

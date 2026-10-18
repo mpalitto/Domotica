@@ -10,18 +10,30 @@
 - **Decision**: Option A — `configTime()` SNTP on the ESP8266, field 3 of the message becomes
   UTC epoch-ms of the first RF pulse (`0` or small value = legacy v1 receiver → old debounce
   path; server accepts both during rollout).
-- **Status (2026-10-18, updated)**: firmware **v2.1 running in service** on the D1 mini + RXB6
-  `rx-241002`, **installed at the fridge** (IP `.231`, mapped to `rf-fridge` in
-  `button2sONOFF/config/receivers.config`). **Server-side epoch fusion is DELIVERED and live** in
-  `button2sONOFF/buttonPressReceiver.sh` (v2-epoch grouping + per-receiver `skew`/`lag` logging;
-  verified with `test_fusion.sh` and a live smoke test); the v1 nodeMCUs keep the old 2 s path.
-  Remaining: USB-flash `nodeMCU-0/1` to v2.1 (server stays backward-compatible meanwhile), then
-  set `FUSION_ENABLED=1`. The KINETIC receiver is **`ESP32_RX_01`** (ESP32 + CC1101/E07-M1101D,
-  GDO0→GPIO13, `:5678`, RSSI) — its firmware source is **not in the repo** and is wanted for the
-  later "add LightwaveRF + RSSI to it" step. **Found & fixed a decode bug**: the ESP8266 refactor
-  had truncated the LightwaveRF code to `F4AA0D-`, read by the server as `INVALID` and dropped;
-  the original algorithm (only surviving in `notMantained/YUN-LWRF-receiver-v0.2`) was restored in
-  `decodePulseData()` — **do not refactor that function again**.
+- **Status (2026-10-18, updated)**: firmware **v2.2** (the framing fix) is deployed and
+  **server-side epoch fusion is DELIVERED and live** in `button2sONOFF/buttonPressReceiver.sh`
+  (v2-epoch grouping + per-receiver `skew`/`lag` logging; `test_fusion.sh` + a live smoke test).
+  On v2: `rx-55d68f` (`rf-laundry` — the former `nodeMCU-1`; USB-flashed then **OTA'd to v2.2 from
+  `.77`**, single-segment framing wire-verified) and `rx-241002` (`rf-fridge`, IP `.231` — **still
+  v2.1**: its OTA listener is wedged so it needs a USB reflash; it keeps working as a receiver
+  meanwhile). Only **`nodeMCU-0`** remains on v1 — it will come back as **`rx-058ef5 : rf-central`**
+  (id predicted from MAC `ec:fa:bc:05:8e:f5`; line already staged in `receivers.config`), and
+  **v1 has no OTA at all**, so USB is mandatory for it. Flip `FUSION_ENABLED=1` only after that
+  (with `=0` the legacy 2 s debounce still gates forwarding, which is what keeps v1+v2 pairs from
+  toggling a light twice). The KINETIC receiver is **`ESP32_RX_01`** (ESP32 + CC1101/E07-M1101D,
+  GDO0→GPIO13, `:5678`, RSSI) — its firmware source is **not in the repo** (wanted for the later
+  "add LightwaveRF + RSSI" step) and it is currently powered off (`AB6EDE`/`CCFF0E` are dead until
+  it is back). **Found & fixed a decode bug**: the ESP8266 refactor had truncated the LightwaveRF
+  code to `F4AA0D-`, read by the server as `INVALID` and dropped; the original algorithm (only
+  surviving in `notMantained/YUN-LWRF-receiver-v0.2`) was restored in `decodePulseData()` — **do
+  not refactor that function again**.
+- **OTA: always run `espota.py` from `.77`, never from the Mac.** `python3 /tmp/espota.py
+  -i <ip> -p 8266 -a '<OTA_PASSWORD>' -f <firmware.bin>` (needs a v2 firmware already running; the
+  Mac Wi-Fi cannot receive the ESP's UDP reply). Expect to retry: a lost `AUTH` datagram wedges the
+  ESP's state machine, and an interrupted transfer can leave its OTA listener **dead until a power
+  cycle** (that is exactly what happened to the fridge unit). For a unit in the field, **USB is the
+  deterministic path**. Details in `DOCs/RF-EVENT-FUSION.md` §7; verify framing on the wire with
+  `button2sONOFF/tools/rf-frame-check.py` (root, no `tcpdump` needed on `.77`).
 - **Restarting `buttonPressReceiver.sh`**: quit the screen session **and kill the leftover
   `socat`** (it keeps `:1234`/`:5678` bound, so a new listener would silently starve) — full
   recipe in `DOCs/RF-EVENT-FUSION.md` §8. Note receivers reconnect **lazily on their next
