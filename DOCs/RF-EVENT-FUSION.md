@@ -272,6 +272,14 @@ path**, and invalid input. Runs green on macOS and on `.77` (bash 5.2).
    listener** (§7), was brought to the Mac and **USB-flashed to v2.2** (no backup needed — v2.1 is
    reproducible from this repo). Boot banner `Version: 2.2 … id: rx-241002`, and its hello was
    captured as **one** 21-byte TCP segment on `.77:1234` (`tools/rf-frame-check.py`).
+   → 2026-10-18 (later): **field OTA test on the reinstalled laundry unit — NEGATIVE result.**
+   From its final in-situ position, `espota.py` on `.77` got the UDP handshake (`AUTH` on the
+   *first* invitation, twice) but the real 326 KB transfer **never completed**: three attempts
+   timed out at invitation/AUTH, the fourth authenticated and began uploading and never reached
+   `Result: OK`. Worse, the unit then became **unreachable from `.77`** (ping 0/15, UDP 8266 dead)
+   while remaining perfectly alive for every other host (`.1`, `.11`, `.33` all pinged it 15/15).
+   It **recovered by itself on its next RF press** (§7 "OTA" #4 has the forensics).
+   ⇒ **Do not OTA a field unit**; for installed receivers USB is the only deterministic path.
    Remaining: **`nodeMCU-0` only**.
 5. ⬜ **Cleanup:** after all v2, optionally remove the legacy debounce path.
 
@@ -408,6 +416,28 @@ conclude the RXB6 is worse until (2) runs; a superhet RXB6 should out-hear the c
          still a perfectly healthy *receiver* (the fridge kept feeding `.77:1234` throughout).
       Diagnose with `tools/rf-frame-check.py --udp 8266` (dumps the handshake) or by repeating a
       hand-rolled invitation (see §8).
+   4. **From a real field position the transfer does not complete — and it breaks the
+      `.77`→unit direction until the unit next transmits (2026-10-18, laundry `rx-55d68f`
+      reinstalled in the laundry room).** Observed sequence: 3 failed attempts (2× `No Answer`,
+      1× `No Answer to our Authentication`), then `Authenticating...OK` + upload started → no
+      `Result: OK`. Afterwards `.77` could not even ping the unit (0/15) and the handshake got
+      **no reply to 10 invitations**, while `.1`/`.11`/`.33` pinged the same unit 15/15 and the
+      unit still answered `.77`'s ARP (`neigh … REACHABLE`) — i.e. **`.77`→unit *unicast* was
+      dropped while *broadcast* got through.** Forensics (why this is *not* an ARP/neighbour
+      fault on the ESP): a **fresh source IP** on `.77` (secondary `.250`, same MAC) failed
+      identically, a repeated gratuitous-ARP nudge changed nothing, and a bridge-side sniff on
+      `.33` saw **zero** frames for the unit's MAC (`.77` is not on `.33`'s bridge — its MAC is
+      learned on the LAN uplink `enp1s0`). Conclusion: a stale **L2 forwarding entry along
+      `.77`'s path** for the unit's MAC, which the unit's own traffic then refreshed — after the
+      next button press (`rx-55d68f connected` in the log) `.77` pinged it **6/6** and the
+      handshake answered on the 1st invitation. *(A "handshake-only" probe is the safe way to test
+      OTA reachability: send the invitation, read `AUTH`, then stop — no transfer, nothing to wedge.
+      Script: `/tmp/otaprobe.py` on `.77`.)*
+      ⇒ **Operational rule: an aborted OTA can leave a unit unreachable *from the server* until its
+      next press; never start an OTA on a unit you cannot reach physically.** Note the trap this
+      sets: every *other* host could still talk to it, so a ping test from `.77` alone looks
+      exactly like "the receiver is dead" — always cross-check from a second host (`.33`/`.11`/`.1`)
+      before touching hardware.
 - [x] **RESOLVED 2026-10-18 — v1 firmware has NO OTA at all.** Every revision of
       `RFreceiver_esp8266.ino` back to the original port (5 revisions checked) contains **zero**
       `ArduinoOTA` references, so `nodeMCU-0` on v1 cannot be updated over the air — Bluetooth /
@@ -521,7 +551,15 @@ and never needs the manager restarted.
    recipe — quit the screen session *and* kill the leftover `socat`), then watch `FUSED … n=2/n=3`
    with sensible `skew`/`lag`. Note grouping already runs today; with `FUSION_ENABLED=0` the legacy
    2 s debounce still gates forwarding, which is what stops a v1+v2 pair from toggling twice.
-4. Watch `lag` for a day — a receiver whose `lag` is huge or negative is not NTP-synced.
+4. Watch `lag` for a day — a receiver whose `lag` is huge or **negative** is not NTP-synced.
+   Already seen once: on a real press (2026-10-18) the laundry unit logged
+   `press start (recv=rf-laundry epoch=1792359674954 lag=-459ms)` — a negative lag means its SNTP
+   clock runs **≈0.46 s ahead** of `.77`'s. Harmless for `skew` (relative) but it eats ~half of
+   `W=1000 ms`: if two v2 receivers ever sit at opposite offsets, a real press could straddle the
+   window. Check NTP on `.77` and on the units before widening `FUSION_WINDOW_MS`; do not widen it
+   blindly (nearby presses are 1.9–6.7 s apart, per §5, so there is room).
+   Related cosmetic noise: the `<rx-id> connected` hello is logged as `buttonID: INVALID` by the
+   RFXCOM preprocessor (harmless, §4).
 5. Optional (still open from §5): straight 17.3 cm ¼-wave antenna on the fridge unit + a
    co-located A/B against a nodeMCU, to settle RXB6 sensitivity properly.
 6. Optional: the ESP32/CC1101 route — add the LightwaveRF decode to `ESP32_RX_01`'s firmware

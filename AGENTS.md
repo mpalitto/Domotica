@@ -34,6 +34,13 @@
   cycle** (that is exactly what happened to the fridge unit). For a unit in the field, **USB is the
   deterministic path**. Details in `DOCs/RF-EVENT-FUSION.md` §7; verify framing on the wire with
   `button2sONOFF/tools/rf-frame-check.py` (root, no `tcpdump` needed on `.77`).
+  **Field OTA was tried on the reinstalled laundry unit and FAILED** (2026-10-18): the UDP
+  handshake answers fine, but the 326 KB transfer never completes, and afterwards the unit becomes
+  unreachable **from `.77` only** (ping 0/15, UDP 8266 dead) while every other host still reaches
+  it — it clears itself on the unit's next RF press. So: **never start an OTA on a receiver you
+  cannot physically reach**, and if a receiver looks dead, cross-check from `.33`/`.11` before
+  believing it. A **handshake-only** probe (send the invitation, read `AUTH`, stop — no transfer,
+  nothing to wedge) is the safe reachability test.
 - **Restarting `buttonPressReceiver.sh`**: quit the screen session **and kill the leftover
   `socat`** (it keeps `:1234`/`:5678` bound, so a new listener would silently starve) — full
   recipe in `DOCs/RF-EVENT-FUSION.md` §8. Note receivers reconnect **lazily on their next
