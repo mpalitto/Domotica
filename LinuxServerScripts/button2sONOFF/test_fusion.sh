@@ -59,9 +59,11 @@ LOG="$T/runA.log"; : > "$LOG"
   step 1792400003400 "0A1400a F4A85C0101 1792400003350 rx-241002"
   # Same button again, well after the window.
   step 1792400006000 "0A1400a F4AA0D1101 1792400005950 rx-241002"
-  # A stale re-report 1.5 s on (as a v1 unit would): the legacy 2 s debounce
-  # must still swallow it, otherwise the light would toggle twice.
-  step 1792400007500 "0A1400a F4AA0D0101 392074320 nodeMCU-1"
+  # A stale re-report 1.8 s on (as a v1 unit would): it is outside the fusion
+  # window but inside the legacy 2 s debounce, so the debounce must swallow it,
+  # otherwise the light would toggle twice. (A v1 re-report *inside* the fusion
+  # window is absorbed as a confirmation instead - see the nodeMCU-0 step above.)
+  step 1792400007800 "0A1400a F4AA0D0101 392074320 nodeMCU-1"
 } > "$LOG" 2>&1
 
 check "3 logical events forwarded (once per press)" 3 "$(fwd)"
@@ -83,14 +85,21 @@ LOG="$T/runB.log"; : > "$LOG"
 
 {
   step 1792400100100 "0A1400a F4AA0D1101 1792400100050 rx-241002"
-  step 1792400100140 "0A1400a F4AA0D0101 1792400100090 rx-TEST01"
-  # A genuine second press 1.2 s later: the legacy 2 s debounce would have
+  # Field worst case (2026-10-19, three receivers): a receiver locks onto a very
+  # late repeat of the same press and lands 914 ms out on the server. It must
+  # still fuse into that press - split it and one press toggles the light twice.
+  step 1792400101014 "0A1400a F4AA0D0101 1792400100964 rx-TEST01"
+  # A genuine second press 1.8 s later: the legacy 2 s debounce would have
   # swallowed it, the fusion window must let it through.
   step 1792400101900 "0A1400a F4AA0D1101 1792400101850 rx-241002"
 } > "$LOG" 2>&1
 
 check "2 logical events forwarded" 2 "$(fwd)"
 check "second press reached the FIFO" 2 "$(grep -c 'sending 4AA0D 1 RFXCOM to FIFO' "$LOG")"
+check "a 914 ms late lock fuses (does not split the press)" 1 \
+    "$(grep -c '^fusing (recv=rf-lab skew=914ms lag=50ms n=2)$' "$LOG")"
+check "the late lock still forwarded exactly once" 1 \
+    "$(grep -c '^FUSED 4AA0D1RFXCOM n=2 forwarded=1 via=rf-fridge@0ms,rf-lab@914ms$' "$LOG")"
 
 # ---------------------------------------------------------------------------
 echo
@@ -147,5 +156,6 @@ check "fusion record has no stray CR" \
 
 echo
 if (( fails == 0 )); then echo "ALL TESTS PASSED"; else echo "$fails TEST(S) FAILED"; fi
-rm -rf "$T"
+# KEEP=1 preserves the run logs under $T for debugging.
+[[ -n "${KEEP:-}" ]] || rm -rf "$T"
 exit $(( fails > 0 ))

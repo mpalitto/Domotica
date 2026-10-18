@@ -205,14 +205,19 @@ script is **executed** (not sourced) — that is what makes it unit-testable.
   receiver epoch, i.e. **end-to-end latency**). A large or negative `lag` = that receiver's SNTP
   is off → clock problems surface in the log instead of as mystery dropped presses.
 - **Act on first arrival** (latency win); later copies are confirmations, not blockers.
-- **`W` is 1000 ms** — not the 500 ms first guessed. Measured intra-press repeat spacing is
-  70–270 ms and a receiver may lock onto repeat #2 or #3, so the *spread* is quantized in whole
-  repeat intervals (≈ up to 800 ms worst case) while separate presses are ≥ 1.9 s apart. 1000 ms
-  therefore fuses the slowest realistic case with margin. Knob: `FUSION_WINDOW_MS`.
-- The legacy 2 s debounce is **kept as the forwarding gate** while any v1 receiver is in the
-  fleet (that is what stops a v1 + v2 pair from toggling a light twice). `FUSION_ENABLED=1`
-  swaps that gate to the tight `FUSION_WINDOW_MS` for v2 events — **only enable it once every
-  receiver speaks v2**.
+- **`W` is 1500 ms** (raised from 1000 on 2026-10-19 — see §4 step 4; the 1000 ms margin was
+  consumed in the field). Measured intra-press repeat spacing is 70–270 ms and a receiver may lock
+  onto a *late* repeat, so the spread is quantized in whole repeat intervals and the ≈800 ms worst
+  case first assumed was **beaten for real: 914 ms** on the first three-receiver press (fridge,
+  2026-10-19). 1500 ms covers that with margin while staying below the smallest observed gap
+  between separate presses (1.9 s), so two genuine presses are never merged. Knob:
+  `FUSION_WINDOW_MS`. Note the window is measured on **server arrival** time (`now - FUSION_T0`),
+  not on the epochs, so network jitter adds to the spread on top of repeat-lock.
+- The legacy 2 s debounce was the forwarding gate while any v1 receiver was in the fleet (that is
+  what stops a v1 + v2 pair from toggling a light twice). **`FUSION_ENABLED=1` since 2026-10-19**,
+  the whole fleet then speaking v2.2: it swaps that gate for `FUSION_WINDOW_MS` on v2 events,
+  while a v1 event — if one ever reappeared — still gets the 2 s gate (the swap requires
+  `is_epoch`).
 - Friendly names come from `config/receivers.config` (`chipID : friendly-name : location`),
   falling back to the raw `rx-XXXXXX` for unmapped receivers.
 
@@ -238,15 +243,20 @@ FUSED FFFFE1RFXCOM n=2 forwarded=1 via=rxtest-01@0ms,rxtest-02@40ms
    as a `legacy-stamp` confirmation. So `n=` counts only copies that arrived *after* the group
    opened: an early v1 copy is a *forwarding*, not a *count* (live example: press 1 of `4AA0D` gave
    `n=2` naming only `rf-laundry` and `rf-fridge`, although `nodeMCU-0` had also heard it).
-   Related: with `FUSION_ENABLED=0` the fusion path never forwards, so **`forwarded=0` is the
-   normal value on every `FUSED` line** — the legacy debounce did the forwarding instead.
+   Related: while `FUSION_ENABLED=0` (until 2026-10-19) the fusion path never forwarded, so
+   **`forwarded=0` was the normal value on every `FUSED` line** — the legacy debounce did the
+   forwarding instead. With fusion enabled the first arrival forwards itself, so a healthy line
+   now reads **`forwarded=1`**.
 
 ### Test harness (`LinuxServerScripts/button2sONOFF/test_fusion.sh`)
 `bash test_fusion.sh` — sources the real script with a stubbed clock and fixture receivers, no
 `.77`, no socat, no radios. Covers: mixed v1+v2 fusion (4 receptions → 1 forward + a `FUSED`
-summary listing `nodeMCU-0@v1`), the legacy debounce still swallowing a stale v1 re-report, the
-`FUSION_ENABLED=1` tight window letting a real second press through, the **KINETIC regression
-path**, and invalid input. Runs green on macOS and on `.77` (bash 5.2).
+summary listing `nodeMCU-0@v1`), the legacy debounce still swallowing a stale v1 re-report from
+*outside* the fusion window, the `FUSION_ENABLED=1` tight window letting a real second press
+through, **a 914 ms late lock fusing rather than splitting the press** (the field worst case that
+drove `W` to 1500 ms — this is the regression guard for the double-toggle risk), the **KINETIC
+regression path**, and invalid input. Runs green on macOS and on `.77` (bash 5.2). `KEEP=1
+bash test_fusion.sh` keeps the per-run logs under `$T` for inspection.
 
 ---
 
@@ -261,9 +271,9 @@ path**, and invalid input. Runs green on macOS and on `.77` (bash 5.2).
 2. ✅ **Measure** (§5) with one v2 + two v1 receivers — done, see §5 (also gave the window `W`).
 3. ✅ **Server-side fusion** built, unit-tested and deployed (§3). The deployed nodeMCUs still
    run v1 and are untouched by it.
-4. 🔄 **Flash** remaining receivers to v2 (physical access required — the slow part; server stays
+4. ✅ **Flash** remaining receivers to v2 (physical access required — the slow part; server stays
    compatible meanwhile). **Then** flip `FUSION_ENABLED=1` in `buttonPressReceiver.sh` (or export
-   it) and restart the receiver.
+   it) and restart the receiver. → done 2026-10-19, see the end of this item.
    → 2026-10-18: the laundry unit (`nodeMCU-1`, IP `.208`) was taken down, the deployed v1
    firmware **backed up** (`esptool read_flash`, full 4 MB; the sketch itself was also recovered
    from git — see §8), reflashed to v2.1, mapped as **`rx-55d68f : rf-laundry`**, then OTA'd to
@@ -291,6 +301,8 @@ path**, and invalid input. Runs green on macOS and on `.77` (bash 5.2).
    tool works on this unit too). **Note:** `nodeMCU-0` never had an OTA path in any v1 revision,
    so USB was the only option — this was the blocker, now cleared.
    Remaining: **reinstall it in the corridor**, then flip `FUSION_ENABLED=1`.
+   → both done 2026-10-19 (corridor reinstall; `W`→1500 ms + `FUSION_ENABLED=1`), and the field
+   test below is what justified the wider window.
    **Bench press test (2026-10-19, board still on the Mac's USB): PASS — and it is the first real
    two-`v2` fusion group** (all earlier evidence had a v1 member). Five presses of the kitchen
    column (button 1) produced exactly five `0A1400a F4AA0D0101 <epoch-ms> rx-058ef5` messages on
@@ -305,20 +317,30 @@ path**, and invalid input. Runs green on macOS and on `.77` (bash 5.2).
    - Locally the board decoded 23 clean copies plus **2 corrupted ones** (`F4AA0D1CC1`, one nibble
      off); only the clean code ever reached `.77` — the confidence filter suppresses phantom
      presses as intended.
-   - ⚠ **Watch at `FUSION_ENABLED=1`:** skew 315–540 ms against `FUSION_WINDOW_MS=1000` is only
-     ~2× margin. If the laundry ever locks onto a much later repeat, one physical press could
-     split into two groups and toggle a light twice. Since nearby *presses* are 1.9–6.7 s apart
-     (§5), widening W to ~1500 ms is the safe remedy if that is ever seen — do not widen blindly.
+   - ⚠→**HIT 2026-10-19, on the very first three-receiver press.** The central unit was
+     reinstalled in the corridor and the user pressed two buttons five times: **all five presses
+     were forwarded exactly once** (5 presses → 5 `sending … to FIFO`, no double toggle), and two
+     of them produced the first-ever **`n=3`** groups:
+     `FUSED 4A0E95RFXCOM n=3 forwarded=1 via=rf-laundry@0ms,rf-central@571ms,rf-fridge@914ms`.
+     That **914 ms** spread left only ~86 ms against `FUSION_WINDOW_MS=1000` — the watch item
+     predicted exactly this, and the fix was applied before enabling: **`W` → 1500 ms**.
+     - Clocks across the fleet: central lag +60…+145 ms, fridge −150…−77 ms, laundry −504…+598 ms
+       (repeat-lock, not clock error — §5).
+     - The laundry reproduced the **weak-signal failure mode**: on 2 of the 5 presses its only
+       message was corrupt (`F4AA0D1CCD`, `F4AA0D1C01` → `buttonID: INVALID` → dropped
+       server-side, no phantom press; the central caught both presses anyway). Its decode is the
+       flakiest in the fleet → the planned ¼-wave antenna (§9) is the fix.
+     - Two of the five groups printed **no `FUSED` line** because the next press carried the *same*
+       buttonID (trap 1 above). "No `FUSED` line" ≠ "not fused".
 5. ⬜ **Cleanup:** after all v2, optionally remove the legacy debounce path.
    → 2026-10-19: **all three receivers are v2.2** — `rx-241002` (fridge), `rx-55d68f` (laundry),
    `rx-058ef5` (central). Note the flash image is **deterministic**: compiling the repo produced
    md5 `f7783deb438efb63192e8271e7e3c799`, byte-identical to the image already on the other two
    units, so the whole fleet runs one provably identical binary (re-check that md5 before any
    future flash if it matters).
-   Next step once the central unit is back in the corridor: flip `FUSION_ENABLED=1` (see §3 for
-   the switch and its `FUSED …` output) and restart the receiver — with no v1 receivers left it is
-   what finally replaces the legacy 2 s debounce as the forwarding gate. Keep the debounce code in
-   place until fusion has been observed in production for a while.
+   → done 2026-10-19: the central unit is back in the corridor, `FUSION_WINDOW_MS` raised to
+   1500 ms (§5) and **`FUSION_ENABLED=1`**, receiver restarted per §8. The legacy 2 s debounce
+   code stays in place: it still gates any v1 event, so rolling back is a one-line flip.
 
 ### Operational note — receivers reconnect **lazily**
 `ensureSocketConnection()` is called from `sendDataToServer()` (`RFreceiver_esp8266.ino:270`),
@@ -343,6 +365,12 @@ on connect (visible in the log); the RFXCOM preprocessor logs it as `INVALID` an
   cross-receiver arrival spread per press → sanity-check the 2 s debounce assumption.
 - After first v2 flash: log rf_epoch spread per press → set W; verify ESP8266 SNTP accuracy
   on this LAN (expect ~1–10 ms).
+- **Measured 2026-10-19 (field, three v2 receivers, first all-v2 press).** Cross-receiver spread
+  per press: laundry → central 571 ms → fridge **914 ms** (worst seen), and on the next press
+  357 ms / 86 ms. Intra-press repeat spacing is 70–270 ms, so a 914 ms spread means the fridge
+  locked ~5–7 repetitions later than the laundry — the whole difference is repeat-lock, not clock
+  skew (the fridge's own `lag` was −150…−77 ms, i.e. its SNTP is fine). The design's ≈800 ms worst
+  case therefore **underestimated reality**; this is what set `FUSION_WINDOW_MS=1500`.
 
 ### RXB6 sensitivity — test log (2026-10-18, bench unit `rx-241002`)
 
@@ -599,20 +627,27 @@ and never needs the manager restarted.
    was wedged, §7 "OTA", so USB was the only path; no backup needed as v2.1 is reproducible from
    this repo). ⚠️ Action for the physical world: the box is still **on the bench at the Mac** —
    put it back in the kitchen with its RXB6 module attached.
-2. **Flash `nodeMCU-0` = `rx-058ef5` / `rf-central` to v2.2** — take it down, USB-flash (v1 has no
-   OTA at all), confirm the id from the boot banner, put it back. Its `receivers.config` line is
-   already staged. Optional but wise: `esptool read_flash 0 0x400000` backup first, as for laundry.
-3. **Then** flip the tight window: `FUSION_ENABLED=1` **and restart the receiver** (§8 restart
-   recipe — quit the screen session *and* kill the leftover `socat`), then watch `FUSED … n=2/n=3`
-   with sensible `skew`/`lag`. Note grouping already runs today; with `FUSION_ENABLED=0` the legacy
-   2 s debounce still gates forwarding, which is what stops a v1+v2 pair from toggling twice.
+2. ✅ **DONE 2026-10-19 — `nodeMCU-0` = `rx-058ef5` / `rf-central` USB-flashed to v2.2**
+   (`Hash of data verified`; banner `Version: 2.2 … id: rx-058ef5` matching the MAC prediction;
+   compressed image md5 `f7783deb438efb63192e8271e7e3c799`, identical to the other two units).
+   ⚠️ Its v1 flash was **not** backed up (unlike the laundry) — v1 is only recoverable by
+   compiling git `196e049^`. Then **reinstalled in the corridor** (2026-10-19), where it
+   reconnected on its own at the next press and took part in the field test below.
+3. ✅ **DONE 2026-10-19** — the tight window is live: `FUSION_WINDOW_MS=1500`, `FUSION_ENABLED=1`,
+   receiver restarted per §8, and the pre-enable field test (§4 step 4) had already shown all five
+   presses forwarded exactly once with `FUSED … n=2`/`n=3`. The legacy 2 s debounce code remains in
+   place as the gate for any v1 event and as the one-line rollback.
 4. Watch `lag` for a day — a receiver whose `lag` is huge or **negative** is not NTP-synced.
    Already seen once: on a real press (2026-10-18) the laundry unit logged
    `press start (recv=rf-laundry epoch=1792359674954 lag=-459ms)` — a negative lag means its SNTP
    clock runs **≈0.46 s ahead** of `.77`'s. Harmless for `skew` (relative) but it eats ~half of
-   `W=1000 ms`: if two v2 receivers ever sit at opposite offsets, a real press could straddle the
-   window. Check NTP on `.77` and on the units before widening `FUSION_WINDOW_MS`; do not widen it
-   blindly (nearby presses are 1.9–6.7 s apart, per §5, so there is room).
+   `W`: if two v2 receivers ever sit at opposite offsets, a real press could straddle the window.
+   **This is not what actually stressed the margin, though** — the 914 ms that forced `W` to
+   1500 ms (§4 step 4) was *repeat-lock*, i.e. a receiver stamping a genuinely later pulse, not a
+   clock offset. Check NTP on `.77` and on the units before widening `FUSION_WINDOW_MS` further,
+   and note that the window is compared against **server arrival** time, so jitter counts too.
+   Nearby presses are ≥ 1.9 s apart (§5), which is the ceiling for W: widen it only with a
+   measurement, never blindly.
    Related cosmetic noise: the `<rx-id> connected` hello is logged as `buttonID: INVALID` by the
    RFXCOM preprocessor (harmless, §4).
 5. Optional (still open from §5): straight 17.3 cm ¼-wave antenna on the fridge unit + a

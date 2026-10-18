@@ -21,17 +21,25 @@
 #     lag  : server now minus its epoch stamp (end-to-end latency, incl. clock
 #            error -> a large or negative lag means a receiver's SNTP is off)
 #
-# The FIRST arrival is what gets forwarded, exactly as before, so the legacy
-# 2 s debounce still protects against duplicates while v1 receivers are in
-# service. Set FUSION_ENABLED=1 once EVERY receiver speaks v2 to also collapse
-# the forwarding debounce to the much tighter fusion window.
+# The FIRST arrival is what gets forwarded. With FUSION_ENABLED=0 the legacy
+# 2 s debounce is the forwarding gate - that is what stops a v1 + v2 pair from
+# toggling a light twice, so it was required while any v1 receiver was in
+# service. FUSION_ENABLED=1 swaps that gate for the tighter fusion window; it
+# is safe now that every receiver in the fleet speaks v2.
 #
 # Knobs (override via environment or edit here):
-#   FUSION_WINDOW_MS   grouping window. Measured: repeats within one press are
-#                      70-270 ms apart, separate presses >= 1.9 s apart, so
-#                      1000 ms fuses with a wide margin.
-#   FUSION_ENABLED     1 = also use the fusion window (instead of 2 s) as the
-#                      forwarding debounce for v2 events.
+#   FUSION_WINDOW_MS   grouping window, measured on SERVER ARRIVAL time (not on
+#                      the epochs). Repeats within one press are 70-270 ms
+#                      apart, so the spread is quantised in whole repeat
+#                      intervals and a receiver that locks onto a late repeat
+#                      lands far out: field worst case is 914 ms (fridge,
+#                      2026-10-19, three-receiver press). 1500 ms covers that
+#                      with margin while staying below the smallest observed
+#                      gap between separate presses (1.9 s), so two genuine
+#                      presses are never merged into one.
+#   FUSION_ENABLED     1 = use the fusion window instead of the 2 s debounce as
+#                      the forwarding gate for v2 events. Enabled 2026-10-19:
+#                      the whole fleet runs v2.2, no v1 receiver remains.
 # ---------------------------------------------------------------------------
 
 BASE_DIR="${BASE_DIR:-/root/Domotica/LinuxServerScripts/button2sONOFF}"
@@ -41,8 +49,8 @@ PREPROCESS_KINETIC="$BASE_DIR/preprocess_kinetic.sh"
 PREPROCESS_RFXCOM="$BASE_DIR/preprocess_rfxcom.sh"
 
 DEBOUNCE_TIME=2000                          # legacy window, ms
-FUSION_WINDOW_MS="${FUSION_WINDOW_MS:-1000}"
-FUSION_ENABLED="${FUSION_ENABLED:-0}"
+FUSION_WINDOW_MS="${FUSION_WINDOW_MS:-1500}"
+FUSION_ENABLED="${FUSION_ENABLED:-1}"
 
 RFXCOM_HEADER="0A1400a"
 

@@ -19,10 +19,16 @@
   (**`nodeMCU-0` → the central receiver, USB-flashed 2026-10-19**; it never had OTA in any v1
   revision, so USB was the only route — that was the rollout's last blocker). Compiling the repo
   yields md5 `f7783deb438efb63192e8271e7e3c799` on every unit, i.e. one identical binary fleet-wide.
-  **Remaining:** reinstall the central unit in the corridor, then flip `FUSION_ENABLED=1` and
-  restart the receiver (that is what finally replaces the 2 s debounce as the forwarding gate) —
-  while `FUSION_ENABLED=0` the legacy debounce still gates forwarding, which is what keeps v1+v2
-  pairs from toggling a light twice. The KINETIC receiver is **`ESP32_RX_01`** (ESP32 + CC1101/E07-M1101D,
+  **Fusion is ARMED (2026-10-19):** the central unit is reinstalled in the corridor and
+  `FUSION_WINDOW_MS=1500` + `FUSION_ENABLED=1` are live, so the fusion window is now the
+  forwarding gate (the legacy 2 s debounce stays in the code as the gate for any v1 event and as
+  the one-line rollback). The window was widened from 1000 ms because the **first three-receiver
+  press hit 914 ms of repeat-lock spread** (fridge locked several repetitions late), leaving only
+  ~86 ms of margin — one press would otherwise have split into two groups and toggled a light
+  twice. Verified before arming: five field presses, all forwarded exactly once, two of them the
+  first `n=3` groups; `test_fusion.sh` now has a regression guard for that 914 ms case. The laundry
+  unit's decode is the flakiest in the fleet (2 of those 5 presses arrived as corrupt codes →
+  `INVALID` → dropped server-side, no phantom press). The KINETIC receiver is **`ESP32_RX_01`** (ESP32 + CC1101/E07-M1101D,
   GDO0→GPIO13, `:5678`, RSSI) — its firmware source is **not in the repo** (wanted for the later
   "add LightwaveRF + RSSI" step) and it is currently powered off (`AB6EDE`/`CCFF0E` are dead until
   it is back). **Found & fixed a decode bug**: the ESP8266 refactor had truncated the LightwaveRF
