@@ -10,17 +10,19 @@
 - **Decision**: Option A — `configTime()` SNTP on the ESP8266, field 3 of the message becomes
   UTC epoch-ms of the first RF pulse (`0` or small value = legacy v1 receiver → old debounce
   path; server accepts both during rollout).
-- **Status (2026-10-18, updated)**: firmware **v2.2** (the framing fix) is deployed and
-  **server-side epoch fusion is DELIVERED and live** in `button2sONOFF/buttonPressReceiver.sh`
-  (v2-epoch grouping + per-receiver `skew`/`lag` logging; `test_fusion.sh` + a live smoke test).
-  On v2.2: `rx-55d68f` (`rf-laundry` — the former `nodeMCU-1`; OTA'd from `.77`) and `rx-241002`
-  (`rf-fridge`, IP `.231` — its OTA listener was wedged, so it was **USB-flashed from the Mac** on
-  2026-10-18, `Hash of data verified`; both framing wire-verified single-segment on `.77:1234`).
-  Only **`nodeMCU-0`** remains on v1 — it will come back as **`rx-058ef5 : rf-central`**
-  (id predicted from MAC `ec:fa:bc:05:8e:f5`; line already staged in `receivers.config`), and
-  **v1 has no OTA at all**, so USB is mandatory for it. Flip `FUSION_ENABLED=1` only after that
-  (with `=0` the legacy 2 s debounce still gates forwarding, which is what keeps v1+v2 pairs from
-  toggling a light twice). The KINETIC receiver is **`ESP32_RX_01`** (ESP32 + CC1101/E07-M1101D,
+- **Status (2026-10-19, updated)**: firmware **v2.2** (the framing fix) is deployed on **all three
+  receivers** and **server-side epoch fusion is DELIVERED and live** in
+  `button2sONOFF/buttonPressReceiver.sh` (v2-epoch grouping + per-receiver `skew`/`lag` logging;
+  `test_fusion.sh` + a live smoke test). On v2.2 with framing wire-verified single-segment on
+  `.77:1234`: `rx-55d68f` (`rf-laundry` — the former `nodeMCU-1`), `rx-241002` (`rf-fridge`, IP
+  `.231` — USB-flashed from the Mac after its OTA listener wedged), and `rx-058ef5`
+  (**`nodeMCU-0` → the central receiver, USB-flashed 2026-10-19**; it never had OTA in any v1
+  revision, so USB was the only route — that was the rollout's last blocker). Compiling the repo
+  yields md5 `f7783deb438efb63192e8271e7e3c799` on every unit, i.e. one identical binary fleet-wide.
+  **Remaining:** reinstall the central unit in the corridor, then flip `FUSION_ENABLED=1` and
+  restart the receiver (that is what finally replaces the 2 s debounce as the forwarding gate) —
+  while `FUSION_ENABLED=0` the legacy debounce still gates forwarding, which is what keeps v1+v2
+  pairs from toggling a light twice. The KINETIC receiver is **`ESP32_RX_01`** (ESP32 + CC1101/E07-M1101D,
   GDO0→GPIO13, `:5678`, RSSI) — its firmware source is **not in the repo** (wanted for the later
   "add LightwaveRF + RSSI" step) and it is currently powered off (`AB6EDE`/`CCFF0E` are dead until
   it is back). **Found & fixed a decode bug**: the ESP8266 refactor had truncated the LightwaveRF

@@ -280,8 +280,27 @@ path**, and invalid input. Runs green on macOS and on `.77` (bash 5.2).
    while remaining perfectly alive for every other host (`.1`, `.11`, `.33` all pinged it 15/15).
    It **recovered by itself on its next RF press** (§7 "OTA" #4 has the forensics).
    ⇒ **Do not OTA a field unit**; for installed receivers USB is the only deterministic path.
-   Remaining: **`nodeMCU-0` only**.
+   → 2026-10-19: **last unit flashed — the rollout is complete.** `nodeMCU-0` (the central
+   receiver, IP `.240`, MAC `ec:fa:bc:05:8e:f5`) was brought to the Mac and **USB-flashed to
+   v2.2** (`Hash of data verified`). Boot banner: `Version: 2.2 (RF Event Fusion)   id:
+   rx-058ef5` — the id **matches the prediction** from the MAC low 24 bits, so the staged
+   `receivers.config` line is now live; SNTP synced (`epoch = 1792361360`, RSSI −54 dBm); hello
+   wire-verified single-segment (`len=21 b'rx-058ef5 connected\r\n'`, `tools/rf-frame-check.py`,
+   captured by resetting the board from the Mac while sniffing `:1234`); server log confirms
+   `rx-058ef5 connected`. OTA handshake from `.77` answers on the bench (the retained bench-only
+   tool works on this unit too). **Note:** `nodeMCU-0` never had an OTA path in any v1 revision,
+   so USB was the only option — this was the blocker, now cleared.
+   Remaining: **reinstall it in the corridor**, then flip `FUSION_ENABLED=1`.
 5. ⬜ **Cleanup:** after all v2, optionally remove the legacy debounce path.
+   → 2026-10-19: **all three receivers are v2.2** — `rx-241002` (fridge), `rx-55d68f` (laundry),
+   `rx-058ef5` (central). Note the flash image is **deterministic**: compiling the repo produced
+   md5 `f7783deb438efb63192e8271e7e3c799`, byte-identical to the image already on the other two
+   units, so the whole fleet runs one provably identical binary (re-check that md5 before any
+   future flash if it matters).
+   Next step once the central unit is back in the corridor: flip `FUSION_ENABLED=1` (see §3 for
+   the switch and its `FUSED …` output) and restart the receiver — with no v1 receivers left it is
+   what finally replaces the legacy 2 s debounce as the forwarding gate. Keep the debounce code in
+   place until fusion has been observed in production for a while.
 
 ### Operational note — receivers reconnect **lazily**
 `ensureSocketConnection()` is called from `sendDataToServer()` (`RFreceiver_esp8266.ino:270`),
