@@ -57,21 +57,24 @@ FIFO (logs/button_fifo) → managerLayer.js (:7777) → WiFi-first / RF-fallback
   calibration (α-filter, per-code offsets). Not running; `RFreceiver.offset` never existed.
 - Firmware: `Arduino/RFreceiver_esp8266/` (v2.1 = SNTP epoch + chip-id identity). **But the
   deployed nodeMCUs do not run this sketch** — see the hardware note below.
-- **Receiver hardware (discovered 2026-10-18).** The deployed nodeMCUs carry an **E07-M1101D**
-  — a TI **CC1101** 433 MHz transceiver, SPI-driven (CSN/SCK/MOSI/MISO) with `GDO0 → GPIO13 (D7)`
-  and `GDO2` unconnected — *not* a single-pin OOK module. So their firmware is a CC1101/SPI
-  sketch, and `RFreceiver_esp8266.ino` (which does `pulseIn` on one data pin) **cannot be
-  flashed onto those boards as-is**. The bench/kitchen v2 unit is a D1 mini + **RXB6** (simple
-  OOK superhet), which does work.
-  - ⇒ Two upgrade paths: **(a)** leave the CC1101 boards on v1 and add v2 receivers built from
-    SPI-free OOK modules — the server already runs v1 + v2 together (verified: one press parsed
-    from `rx-241002` *and* both nodeMCUs); **(b)** port v2.1 to the CC1101 — configure
-    433.92 MHz **ASK/OOK asynchronous serial mode** so GDO0 emits the raw demodulated envelope,
-    which the existing `decodePulseData()` then consumes unchanged (and you get **RSSI** for
-    free). Path (b) reuses clearly better radios (real front-end + SMA antenna).
-- **Second receiver family in the log:** `ESP32_RX_01` speaks a richer protocol —
-  `KINETIC DEFF2E BUTTON_2 ESP32_RX_01 -84dBm` — i.e. KINETIC remotes **with RSSI**. Source
-  unknown; if it is ours it is the natural foundation for the per-reception health data.
+- **KINETIC receiver — `ESP32_RX_01` (identified 2026-10-18).** A separate, self-built receiver:
+  an **ESP32** running "CC1101 KINETIC SWITCH DECODER v1.0" with an **E07-M1101D** (TI **CC1101**)
+  whose `GDO0 → GPIO13`. Connects to `.77:**5678**` (the KINETIC port), IP `192.168.1.212`, banner
+  `ESP32 ESP32_RX_01 connected!`. Messages carry **RSSI**:
+  `KINETIC DEFF2E BUTTON_2 ESP32_RX_01 -84dBm`. Has NVS-stored codes (`AB6EDE`, `CCFF0E`), a
+  TRAINING mode, and a serial command interface (`n/d/t/l/w/r/c/s/net/?`).
+  - KINETIC needs much shorter pulses than LightwaveRF — that is why it is a separate receiver
+    (and why the plain OOK path can't handle it). Whether **one** CC1101 can do both is open.
+  - **Correction:** an E07-M1101D was seen on the board plugged into the Mac and initially
+    assumed to be a deployed nodeMCU. It is *this* KINETIC receiver. The **deployed nodeMCUs' RF
+    module is still unverified** — no nodeMCU has been inspected off the wall yet.
+- **Possible v2 upgrade path on the CC1101 design:** the CC1101 can run 433.92 MHz **ASK/OOK
+  asynchronous serial mode**, so `GDO0` emits the raw demodulated envelope — exactly what
+  `decodePulseData()` already consumes. An ESP32/ESP8266 + CC1101 v2 receiver is therefore viable
+  and would also provide **RSSI** for per-reception health data. Lower-risk alternative: keep
+  building v2 units from SPI-free OOK modules (RXB6), which already works.
+- **Mixed fleet works today:** verified — one press parsed from `rx-241002` (v2) *and* both
+  v1 nodeMCUs, no server changes.
 
 ---
 
