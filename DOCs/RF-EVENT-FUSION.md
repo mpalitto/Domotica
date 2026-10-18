@@ -203,7 +203,13 @@ via `screen -L` is verified working — a board reset shows the full boot banner
 | test | remote | `nodeMCU-0` | `nodeMCU-1` | `rx-241002` | note |
 |---|---|---|---|---|---|
 | near | `4AA0D` b1 (kitchen column) | 13 | 19 | 23 | bench unit sits next to this switch → **not** a fair comparison |
+| mid | `4A85C` b1 (P-letto-Matteo) | 7 | 6 | 9 | bench unit heard the **most** of the three |
 | far | `4A77D` b4 (BL-disimpegno) | 13 | 15 | **0** | opposite end of the house; bench heard nothing |
+
+Reading: the bench RXB6 out-hears both nodeMCUs at near *and* mid range and only drops out at
+the far end — consistent with a healthy radio in a spot that can't reach the bilocale (the
+nodeMCUs, which heard the bilocale remote *better* than the bedroom one, are evidently nearer
+that end). Not evidence of a weak module.
 
 Also measured (same near run): within one press the remote's repeated frames decode **70–270 ms**
 apart; between presses the gap is **1.9–6.7 s** → a fusion window of a few hundred ms merges
