@@ -10,12 +10,15 @@
 - **Decision**: Option A — `configTime()` SNTP on the ESP8266, field 3 of the message becomes
   UTC epoch-ms of the first RF pulse (`0` or small value = legacy v1 receiver → old debounce
   path; server accepts both during rollout).
-- **Status (2026-10-18)**: firmware **v2.1 drafted + compile-verified** (SNTP epoch stamping,
-  chip-ID identity `rx-XXXXXX`, ArduinoOTA, IDENTIFY LED-blink over the existing TCP conn,
-  gitignored `secrets.h`; fits: 290 KB/1 MB app slot, IRAM 92%, dual-OTA 4M2M layout).
-  Pending: review → USB flash of nodeMCU-0/1 (mapping ritual: serial prints rx-id at flash),
-  then `receivers.config` + fusion window + IDENTIFY listener in `buttonPressReceiver.sh`.
-  Server must stay backward-compatible (epoch ≥10¹² detect) until all receivers are updated.
+- **Status (2026-10-18)**: firmware **v2.1 flashed & verified on the bench D1 mini (`rx-241002`)** —
+  WiFi, SNTP epoch stamping, chip-ID identity, ArduinoOTA, IDENTIFY all working; a real press
+  emits `0A1400a <code> <epoch-ms> rx-241002` and the server parses it to the same buttonID as
+  the legacy units. **Found & fixed a decode bug**: the ESP8266 "refactor" had truncated the
+  10-char LightwaveRF code to `F4AA0D-`, which the server reads as `INVALID` and drops; the
+  original algorithm (only surviving in `notMantained/YUN-LWRF-receiver-v0.2`) was restored in
+  `decodePulseData()` — **do not refactor that function again**. Next: `receivers.config` line
+  for `rx-241002` + epoch-fusion window in `buttonPressReceiver.sh`; then USB-flash
+  nodeMCU-0/1. Server must stay backward-compatible (epoch ≥10¹² detect) until all are updated.
 - **Read `DOCs/RF-EVENT-FUSION.md` first** — it is the source of truth (design, rollout plan,
   open questions, fix list, resume commands).
 

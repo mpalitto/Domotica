@@ -87,6 +87,15 @@ FIFO (logs/button_fifo) → managerLayer.js (:7777) → WiFi-first / RF-fallback
   names in firmware** — a reflashed board can never impersonate another, and the same
   compiled image fits every receiver.
 
+### Code field — the 10-char layout (must be preserved; discovered the hard way)
+`preprocess_rfxcom.sh` reads the *whole line with spaces* at fixed positions, so field 2 must
+be 10 chars: `AAAAAA` (address) + `T` + `BBB` where, from `raw[9:14]`/`raw[14:17]`/`raw[17:1]`,
+`SWITCH_ID = code[1:6]`, `BUTTON_TYPE = code[6:9]`, `BUTTON_NUMBER = code[9]`.
+- `BUTTON_TYPE ∈ {010,110,100,000}` is **validated but never used**; `code[6]` is a raw RF bit
+  (deployed units emit both `…1101` and `…0101` for the same button).
+- **The button is `code[9]`** and the routing key is `code[1:6] + code[9]` (e.g. `4AA0D` + `1`).
+- ⇒ **Fuse on the normalized buttonID, not the raw code string.**
+
 ### Identity → location mapping (server-side `receivers.config`)
 Friendly names live on `.77`, same spirit as `sONOFF.config`:
 ```
@@ -113,7 +122,7 @@ never reflash.
 - Future (Tier 3): epoch-µs or burst-sequence number can be added as a 5th field without
   breaking v1/v2 parsers.
 
-### Firmware changes — IMPLEMENTED in v2.1 draft (2026-10-18, compile-verified, not yet flashed)
+### Firmware changes — v2.1 (2026-10-18; flashed & verified on bench D1 mini `rx-241002`)
 1. ✅ `configTime(0, 0, NTP_SERVER_1, NTP_SERVER_2)` in `setup()` (UTC, no TZ/DST);
    wait up to 15 s at boot for sync, else run unsynced and send `0`.
 2. ✅ RF-time stamp: `nowEpochMs()` captured at the first valid pulse of the burst
@@ -125,7 +134,15 @@ never reflash.
 6. ✅ `secrets.h` (gitignored, template in `secrets.h.example`): WiFi creds, OTA password,
    NTP servers. Default `pool.ntp.org` + `time.google.com` pending the LAN-time-source
    open question (§6).
-7. RF decode pipeline left byte-identical to v1 (no refactoring of what works).
+7. ✅ RF decode pipeline **restored to the original (YUN) algorithm**. The ESP8266 port had
+   silently broken it — see the code-format bug in §7. Both the deployed v1 units and this
+   firmware now emit the same server-parseable 10-char code.
+
+**Bench verification (2026-10-18, D1 mini + RXB6, id `rx-241002`):** boots, joins WiFi
+(`NathanielPI`, 2.4 GHz, WPA2), SNTP syncs (UTC epoch), OTA armed, TCP to `.77:1234` OK.
+A real press emitted `0A1400a F4AA0D0101 1792347373298 rx-241002` and the server parsed it to
+buttonID `4AA0D 1 RFXCOM` — identical to the legacy units; it was only **debounced** because
+`nodeMCU-0` reached the FIFO first (exactly the 2 s hack fusion removes).
 
 **Measured fit (nodemcuv2, core 3.1.2, default 4M2M dual-OTA layout):**
 | Resource   | v1        | v2.1      | Delta |
@@ -184,6 +201,15 @@ Flash/OTA upload: `arduino-cli upload -p <port> --fqbn esp8266:esp8266:nodemcuv2
       Needs care: must not break the `while read` pipeline in `buttonPressReceiver.sh`.
 
 ## 7. Discovered issues / fix list (this session, 2026-10-18)
+- [x] **Firmware decode bug (FIXED 2026-10-18).** The ESP8266 "refactor" replaced the original
+      YUN decode (`notMantained/YUN-LWRF-receiver-v0.2`, 9 nibbles + `1000-→0100`,
+      `10F0-→1002`, `12F2-→1003`, `14F2-→1005`, …) with a truncated 6-nibble buffer + a
+      nonsense table. Receivers emitted `F4AA0D-` → server logged `buttonID: INVALID` and
+      **silently dropped every v2 press**. Restored the original algorithm in
+      `decodePulseData()` (10-char code, `code[6]` = raw bit, dash stripped). Verified on the
+      bench D1 mini: server now logs `buttonID: 4AA0D 1 RFXCOM` for our line.
+      *(The `bak.Domotica` copy on `.77` and the repo both contain the broken version — the
+      correct logic only survives in `notMantained/`. Do not "refactor" this again.)*
 - [ ] `socket.js:27` — `rxOffestFile` typo (undefined var → would crash every 10 min).
       Dormant; fix or archive to `old-scripts/`.
 - [ ] `.77` has stale `socat -u TCP-LISTEN:1234` processes (Oct 9/10/14 leftovers) next to
@@ -199,8 +225,12 @@ Flash/OTA upload: `arduino-cli upload -p <port> --fqbn esp8266:esp8266:nodemcuv2
 3. Ground truth commands:
    - `ssh root@192.168.1.77 'tail -30 /root/Domotica/LinuxServerScripts/button2sONOFF/logs/buttonPressReceiver.sh.log'`
    - `ssh root@192.168.1.77 'ss -tlnp | grep -E ":1234\b|:5678\b"; screen -ls'`
-4. Firmware lives in `Arduino/RFreceiver_esp8266/` (v2.1 draft = current working tree);
+4. Firmware lives in `Arduino/RFreceiver_esp8266/` (v2.1 = committed, flashed & verified);
    server in `LinuxServerScripts/button2sONOFF/buttonPressReceiver.sh`.
+   - Bench unit: D1 mini + RXB6, id **`rx-241002`** (still needs its `receivers.config` line).
+   - Serial capture on macOS: `screen -L -dmS cap /dev/cu.usbserial-* 115200`, then read
+     `screenlog.0`. `arduino-cli monitor` reads zero bytes here, and opening the port does
+     **not** reliably reset the board — have the sketch print on a loop instead.
 5. Toolchain on the Mac (installed 2026-10-18): `arduino-cli` + `esp8266:esp8266` core 3.1.2.
    - compile: `arduino-cli compile --fqbn esp8266:esp8266:nodemcuv2 Arduino/RFreceiver_esp8266/`
    - USB flash: `arduino-cli upload -p /dev/cu.usbserial-* --fqbn esp8266:esp8266:nodemcuv2 Arduino/RFreceiver_esp8266/`

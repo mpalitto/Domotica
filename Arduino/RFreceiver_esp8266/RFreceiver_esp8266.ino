@@ -143,6 +143,7 @@ void setup_wifi() {
   Serial.println(WIFI_SSID);
 
   WiFi.mode(WIFI_STA);
+  WiFi.persistent(false);  // don't keep stale SDK wifi config in flash
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
   bool ledState = false;
@@ -395,11 +396,25 @@ void decodePulseData() {
   }
   binaryString[binaryPos] = '\0';
 
-  // Decode binary string to hex nibbles
-  char decodedString[12] = "------    ";  // 6 chars + dash + 3 spaces + null
-  int charPos = 5;  // Start from position 5 (working backwards)
+  // Reconstruct the 10-char LightwaveRF code exactly as the original YUN
+  // receiver does (notMantained/YUN-LWRF-receiver-v0.2). Layout:
+  //   positions 5..0 <- nibbles 1..6 (address, reverse order)
+  //   position 6     <- the raw binary bit at index 6 (always '1' in practice)
+  //   positions 9..7 <- nibbles 7..9 (command)
+  //   position 10    <- '-' so the command replacements below can rewrite it
+  // The server's preprocessor slices the line by fixed positions, so the code
+  // MUST keep this 6-address + 4-command layout. A previous ESP8266 "refactor"
+  // truncated this to 6 nibbles + "-" (e.g. "F4AA0D-"), which the server
+  // rejects as INVALID and silently drops.
+  char codeBuf[16];
+  memset(codeBuf, ' ', sizeof(codeBuf));
+  codeBuf[10] = '-';
+  codeBuf[11] = '\0';
+  if (binaryPos > 6) codeBuf[6] = binaryString[6];
 
   isBadCode = false;
+
+  int charPos = 6;  // write into 5,4,3,2,1,0 then 9,8,7
 
   for (int j = 1; j < 81 && j + 7 < binaryPos; j += 9) {
     uint8_t byteCode = 0x80;
@@ -424,8 +439,8 @@ void decodePulseData() {
     Serial.print(" - ");
     Serial.println(nibble);
 
-    decodedString[charPos--] = nibble;
-    if (charPos < 0) break;
+    codeBuf[--charPos] = nibble;
+    if (charPos == 0) charPos = 10;
   }
 
   if (isBadCode) {
@@ -433,17 +448,16 @@ void decodePulseData() {
     return;
   }
 
-  decodedString[6] = '-';
-  decodedString[10] = '\0';
-
-  // Apply transformations for specific device codes
-  String tempString = String(decodedString);
-  tempString.replace("000-", "100");
-  tempString.replace("001-", "101");
-  tempString.replace("0F0-", "002");
-  tempString.replace("2F2-", "003");
-  tempString.replace("3F2-", "004");
-  tempString.replace("4F2-", "005");
+  // Command-suffix transformations (verbatim from the original receiver)
+  String tempString = String(codeBuf);
+  tempString.replace("1000-", "0100");
+  tempString.replace("1001-", "0101");
+  tempString.replace("10F0-", "1002");
+  tempString.replace("12F2-", "1003");
+  tempString.replace("13F2-", "1004");
+  tempString.replace("14F2-", "1005");
+  // Unmatched codes still carry the trailing '-'; the wire format never has it
+  tempString.replace("-", "");
 
   strncpy(currentDataString, tempString.c_str(), MAX_DATA_STRING_LENGTH - 1);
   currentDataString[MAX_DATA_STRING_LENGTH - 1] = '\0';
