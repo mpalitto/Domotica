@@ -1,14 +1,14 @@
 # RF Event Fusion — Synchronized Receiver Timestamps
 
 **Project start:** 2026-10-18
-**Status:** FIRMWARE **v2.2** DEPLOYED **and SERVER-SIDE FUSION DELIVERED** (epoch fusion live in
-`buttonPressReceiver.sh`, unit-tested + smoke-tested on `.77`). On v2: `rx-55d68f` (laundry — the
-former `nodeMCU-1`; flashed 2026-10-18, **OTA'd to v2.2 from `.77` and wire-verified**) and
-`rx-241002` (fridge — **still on v2.1**, its OTA listener is wedged so it needs a USB reflash:
-§7 "OTA", §9). Still on v1: **`nodeMCU-0`** only = **`rx-058ef5`** (id predicted from its MAC,
-named `rf-central`; v1 has **no OTA at all**, so USB is mandatory for it). It is the last blocker
-for `FUSION_ENABLED=1`. **v2.2 fixes a ~13 % silent message loss** caused by line framing (§7).
-See §3 "Server fusion (as built)" and §9 "Next".
+**Status:** FIRMWARE **v2.2** DEPLOYED on every receiver that can take it, **SERVER-SIDE FUSION
+LIVE** (epoch fusion running in `buttonPressReceiver.sh`, unit-tested + smoke-tested on `.77`).
+On v2.2: `rx-55d68f` (laundry — the former `nodeMCU-1`; OTA'd from `.77`) and `rx-241002`
+(fridge — OTA was wedged (§7 "OTA") so it was reflashed **over USB from the Mac** on 2026-10-18;
+both framing-**wire-verified** on `.77:1234`). Still on v1: **`nodeMCU-0`** only = **`rx-058ef5`**
+(id predicted from its MAC, staged as `rf-central`; v1 has **no OTA at all**, so USB is mandatory
+for it) — the last blocker for `FUSION_ENABLED=1`. **v2.2 fixed a ~13 % silent message loss**
+caused by line framing (§7). See §3 "Server fusion (as built)" and §9 "Next".
 **Owner:** Matteo
 **Read this first** in any future session before touching RF receiver code or `buttonPressReceiver.sh`.
 
@@ -62,8 +62,8 @@ FIFO (logs/button_fifo) → managerLayer.js (:7777) → WiFi-first / RF-fallback
   ```
 - **`socket.js` (port 1234) is DORMANT** — it once did passive per-receiver offset
   calibration (α-filter, per-code offsets). Not running; `RFreceiver.offset` never existed.
-- Firmware: `Arduino/RFreceiver_esp8266/` (v2.1 = SNTP epoch + chip-id identity). **But the
-  deployed nodeMCUs do not run this sketch** — see the hardware note below.
+- Firmware: `Arduino/RFreceiver_esp8266/` (**v2.2** = SNTP epoch + chip-id identity + single-write
+  line framing). **But not every deployed node runs this sketch** — see the hardware note below.
 - **KINETIC receiver — `ESP32_RX_01` (identified 2026-10-18).** A separate, self-built receiver:
   an **ESP32** running "CC1101 KINETIC SWITCH DECODER v1.0" with an **E07-M1101D** (TI **CC1101**)
   whose `GDO0 → GPIO13`. Connects to `.77:**5678**` (the KINETIC port), IP `192.168.1.212`, banner
@@ -250,8 +250,13 @@ path**, and invalid input. Runs green on macOS and on `.77` (bash 5.2).
    it) and restart the receiver.
    → 2026-10-18: the laundry unit (`nodeMCU-1`, IP `.208`) was taken down, the deployed v1
    firmware **backed up** (`esptool read_flash`, full 4 MB; the sketch itself was also recovered
-   from git — see §8), reflashed to v2.1 and mapped as **`rx-55d68f : rf-laundry`**.
-   Remaining: `nodeMCU-0`.
+   from git — see §8), reflashed to v2.1, mapped as **`rx-55d68f : rf-laundry`**, then OTA'd to
+   **v2.2** from `.77`.
+   → 2026-10-18 (later): the fridge unit `rx-241002` (`.231`), stuck on v2.1 with a **wedged OTA
+   listener** (§7), was brought to the Mac and **USB-flashed to v2.2** (no backup needed — v2.1 is
+   reproducible from this repo). Boot banner `Version: 2.2 … id: rx-241002`, and its hello was
+   captured as **one** 21-byte TCP segment on `.77:1234` (`tools/rf-frame-check.py`).
+   Remaining: **`nodeMCU-0` only**.
 5. ⬜ **Cleanup:** after all v2, optionally remove the legacy debounce path.
 
 ### Operational note — receivers reconnect **lazily**
@@ -269,7 +274,7 @@ so a receiver that is power-cut or reset leaves its server-side connection `ESTA
 one holding a `socat` child (roughly one per reboot). `ss` therefore never proves liveness — the
 log (and the per-receiver `lag`) does. The listeners use `fork`+`reuseaddr`, so zombies never
 block or starve new connections; they are just clutter in `ps`. Future nicety: SO_KEEPALIVE or an
-idle timeout on the listener to reap them. Note v2.1 also sends a `<rx-id> connected` hello line
+idle timeout on the listener to reap them. Note v2.x also sends a `<rx-id> connected` hello line
 on connect (visible in the log); the RFXCOM preprocessor logs it as `INVALID` and ignores it.
 
 ## 5. Pre-flight measurements (can start NOW on v1 firmware)
@@ -421,13 +426,13 @@ conclude the RXB6 is worse until (2) runs; a superhet RXB6 should out-hear the c
 3. Ground truth commands:
    - `ssh root@192.168.1.77 'tail -30 /root/Domotica/LinuxServerScripts/button2sONOFF/logs/buttonPressReceiver.sh.log'`
    - `ssh root@192.168.1.77 'ss -tlnp | grep -E ":1234\b|:5678\b"; screen -ls'`
-4. Firmware lives in `Arduino/RFreceiver_esp8266/` (v2.1 = committed, flashed & verified);
-   server in `LinuxServerScripts/button2sONOFF/buttonPressReceiver.sh`
-   (+ `test_fusion.sh` for the fusion logic).
+4. Firmware lives in `Arduino/RFreceiver_esp8266/` (**v2.2** = committed, flashed & verified on
+   laundry + fridge); server in `LinuxServerScripts/button2sONOFF/buttonPressReceiver.sh`
+   (+ `test_fusion.sh` for the fusion logic, `tools/rf-frame-check.py` to verify framing on `.77`).
    - **`rx-241002`** = D1 mini + RXB6, mapped to `rf-fridge` in `config/receivers.config`,
-     installed at the fridge, IP `192.168.1.231`, MAC `bc:dd:c2:24:10:02`. Still on **v2.1**:
-     its OTA listener is wedged (§7) → **USB reflash to v2.2 pending**. While wedged it is
-     OTA-deaf but remains a fully working receiver.
+     installed at the fridge, IP `192.168.1.231`, MAC `bc:dd:c2:24:10:02`. Now on **v2.2**: its
+     OTA listener was wedged (§7) so it was reflashed **over USB** from the Mac on 2026-10-18
+     (`arduino-cli upload` → `Hash of data verified`; banner `Version: 2.2 … id: rx-241002`).
    - **`rx-55d68f`** = nodeMCU (the laundry unit, formerly `nodeMCU-1`), IP `192.168.1.208`,
      flashed 2026-10-18, mapped to `rf-laundry`; **now on v2.2** (OTA'd from `.77`, framing
      wire-verified). MAC `cc:50:e3:55:d6:8f`.
@@ -454,9 +459,14 @@ conclude the RXB6 is worse until (2) runs; a superhet RXB6 should out-hear the c
      port alone does not reliably reset the board). `arduino-cli monitor` reads zero bytes here.
 5. Toolchain on the Mac (installed 2026-10-18): `arduino-cli` + `esp8266:esp8266` core 3.1.2.
    - compile: `arduino-cli compile --fqbn esp8266:esp8266:nodemcuv2 Arduino/RFreceiver_esp8266/`
-   - USB flash: `arduino-cli upload -p /dev/cu.usbserial-* --fqbn esp8266:esp8266:nodemcuv2 Arduino/RFreceiver_esp8266/`
-   - serial: `arduino-cli monitor -p /dev/cu.usbserial-* -c baudrate=115200`
-   - OTA flash (after first USB flash): hostname = `rx-XXXXXX`, password from `secrets.h`
+   - USB flash — the **default** path (no UDP lottery, and the only option for v1):
+     `arduino-cli upload -p /dev/cu.usbserial-* --fqbn esp8266:esp8266:nodemcuv2 Arduino/RFreceiver_esp8266/`
+     ends with `Hash of data verified`. Every board here is CH340-based, so the device path is the
+     same whichever is plugged in — identify the unit by the **boot banner id**, not the port.
+   - serial: `python3 serialid.py /dev/cu.usbserial-* <seconds>` (toggles DTR/RTS to force the
+     banner; `arduino-cli monitor` reads zero bytes on these boards)
+   - OTA flash — **v2 only**, and **run espota from `.77`**, never the Mac (§7 "OTA"):
+     hostname = `rx-XXXXXX`, password from `secrets.h`
 
 ### Restarting the receiver safely (do NOT just `screen -X quit`)
 `button2sonoff.sh` starts it as a detached screen session named `buttonPressReceiver.sh`, and
@@ -474,11 +484,10 @@ and never needs the manager restarted.
 
 ## 9. Next
 
-1. **USB-flash the fridge unit `rx-241002` to v2.2** — the unit is being brought to the Mac;
-   its OTA listener is wedged (§7 "OTA") so USB is the only path. No flash backup needed: v2.1 is
-   reproducible from this repo and the only local secret is `secrets.h`, already on the Mac.
-   `arduino-cli upload -p /dev/cu.usbserial-* --fqbn esp8266:esp8266:nodemcuv2 Arduino/RFreceiver_esp8266/`
-   (if several boards are attached, tell them apart by MAC with `esptool.py flash_id`).
+1. ✅ **DONE 2026-10-18 — the fridge unit `rx-241002` was USB-flashed to v2.2** (its OTA listener
+   was wedged, §7 "OTA", so USB was the only path; no backup needed as v2.1 is reproducible from
+   this repo). ⚠️ Action for the physical world: the box is still **on the bench at the Mac** —
+   put it back in the kitchen with its RXB6 module attached.
 2. **Flash `nodeMCU-0` = `rx-058ef5` / `rf-central` to v2.2** — take it down, USB-flash (v1 has no
    OTA at all), confirm the id from the boot banner, put it back. Its `receivers.config` line is
    already staged. Optional but wise: `esptool read_flash 0 0x400000` backup first, as for laundry.

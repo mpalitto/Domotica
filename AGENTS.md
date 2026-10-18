@@ -13,10 +13,10 @@
 - **Status (2026-10-18, updated)**: firmware **v2.2** (the framing fix) is deployed and
   **server-side epoch fusion is DELIVERED and live** in `button2sONOFF/buttonPressReceiver.sh`
   (v2-epoch grouping + per-receiver `skew`/`lag` logging; `test_fusion.sh` + a live smoke test).
-  On v2: `rx-55d68f` (`rf-laundry` — the former `nodeMCU-1`; USB-flashed then **OTA'd to v2.2 from
-  `.77`**, single-segment framing wire-verified) and `rx-241002` (`rf-fridge`, IP `.231` — **still
-  v2.1**: its OTA listener is wedged so it needs a USB reflash; it keeps working as a receiver
-  meanwhile). Only **`nodeMCU-0`** remains on v1 — it will come back as **`rx-058ef5 : rf-central`**
+  On v2.2: `rx-55d68f` (`rf-laundry` — the former `nodeMCU-1`; OTA'd from `.77`) and `rx-241002`
+  (`rf-fridge`, IP `.231` — its OTA listener was wedged, so it was **USB-flashed from the Mac** on
+  2026-10-18, `Hash of data verified`; both framing wire-verified single-segment on `.77:1234`).
+  Only **`nodeMCU-0`** remains on v1 — it will come back as **`rx-058ef5 : rf-central`**
   (id predicted from MAC `ec:fa:bc:05:8e:f5`; line already staged in `receivers.config`), and
   **v1 has no OTA at all**, so USB is mandatory for it. Flip `FUSION_ENABLED=1` only after that
   (with `=0` the legacy 2 s debounce still gates forwarding, which is what keeps v1+v2 pairs from
