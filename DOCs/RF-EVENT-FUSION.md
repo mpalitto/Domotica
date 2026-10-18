@@ -1,7 +1,10 @@
 # RF Event Fusion — Synchronized Receiver Timestamps
 
 **Project start:** 2026-10-18
-**Status:** DECIDED + FIRMWARE DRAFTED (v2.1, compile-verified on core 3.1.2) — pending: review, USB flash of the two nodes, server-side fusion + `receivers.config`.
+**Status:** v2.1 FIRMWARE DEPLOYED (bench → fridge, `rx-241002`) **and SERVER-SIDE FUSION
+DELIVERED** (epoch fusion live in `buttonPressReceiver.sh`, unit-tested + smoke-tested on `.77`).
+Pending: flash the deployed nodeMCUs to v2 (they keep working on v1 meanwhile), then flip
+`FUSION_ENABLED=1`. See §3 "Server fusion (as built)" and §9 "Next".
 **Owner:** Matteo
 **Read this first** in any future session before touching RF receiver code or `buttonPressReceiver.sh`.
 
@@ -40,7 +43,7 @@ ESP8266 receivers (nodeMCU-0, nodeMCU-1, ...)   433 MHz LightwaveRF
    ▼
 buttonPressReceiver.sh (socat :1234 + :5678)
    │  preprocess_rfxcom.sh / preprocess_kinetic.sh  → "4B38D 1 RFXCOM"
-   │  2 s debounce on last buttID (time-window hack, no event identity)
+   │  epoch fusion (v2) + 2 s debounce (v1)  →  ONE logical event per press
    ▼
 FIFO (logs/button_fifo) → managerLayer.js (:7777) → WiFi-first / RF-fallback
 ```
@@ -177,32 +180,71 @@ buttonID `4AA0D 1 RFXCOM` — identical to the legacy units; it was only **debou
 Flash/OTA upload: `arduino-cli upload -p <port> --fqbn esp8266:esp8266:nodemcuv2 Arduino/RFreceiver_esp8266/`
 (afterwards: `arduino-cli upload -p <port> --fqbn esp8266:esp8266:nodemcuv2 --input-dir ...` or `espota.py -r` for OTA).
 
-### Server fusion (bash, in `buttonPressReceiver.sh` — no Python, per project rules)
-- Parse field 3; if ≥ 10¹² → epoch mode. `arrival = $(date +%s%3N)`.
-- Event table per `buttID`: last event `{rf_epoch, count, first_receiver}`.
-  - New rf_epoch − last rf_epoch ≤ **W** → same event: `count++`, do **not** re-forward
-    (log as confirmation). Latency `arrival − rf_epoch` logged per receiver.
-  - Else → new event: forward to FIFO immediately, record.
+### Server fusion (as built 2026-10-18 — bash only, in `buttonPressReceiver.sh`)
+Live on `.77` since 21:50. `BASE_DIR` is now overridable and the listeners only start when the
+script is **executed** (not sourced) — that is what makes it unit-testable.
+- Parse the message; **v2 iff** header is `0A1400a` *and* field 3 is ≥ 13 digits → epoch mode.
+  Everything else (v1 `millis()`, KINETIC) follows the untouched legacy path.
+- Group state per port subshell: `{key, server_t0, first_epoch, count, seen[], forwarded}`.
+- **Same key within `FUSION_WINDOW_MS` → fused**: not re-forwarded, just counted, and logged with
+  `skew` (receiver epoch − group's first epoch, i.e. RF-time skew) and `lag` (server now −
+  receiver epoch, i.e. **end-to-end latency**). A large or negative `lag` = that receiver's SNTP
+  is off → clock problems surface in the log instead of as mystery dropped presses.
 - **Act on first arrival** (latency win); later copies are confirmations, not blockers.
-- **W initial = 500 ms**, then tune to the *measured* repeat spacing (see §5). A receiver
-  may miss repeat #1 and stamp repeat #2 → intra-press spread is quantized by the repeat
-  interval, not ms-jitter — W must be ≥ one repeat gap.
-- Legacy messages keep the current 2 s debounce path until all receivers are v2.
+- **`W` is 1000 ms** — not the 500 ms first guessed. Measured intra-press repeat spacing is
+  70–270 ms and a receiver may lock onto repeat #2 or #3, so the *spread* is quantized in whole
+  repeat intervals (≈ up to 800 ms worst case) while separate presses are ≥ 1.9 s apart. 1000 ms
+  therefore fuses the slowest realistic case with margin. Knob: `FUSION_WINDOW_MS`.
+- The legacy 2 s debounce is **kept as the forwarding gate** while any v1 receiver is in the
+  fleet (that is what stops a v1 + v2 pair from toggling a light twice). `FUSION_ENABLED=1`
+  swaps that gate to the tight `FUSION_WINDOW_MS` for v2 events — **only enable it once every
+  receiver speaks v2**.
+- Friendly names come from `config/receivers.config` (`chipID : friendly-name : location`),
+  falling back to the raw `rx-XXXXXX` for unmapped receivers.
+
+Log shape per press (real smoke test on `.77`, three crafted receptions):
+```
+press start (recv=rxtest-01 epoch=1792353045448 lag=102ms)
+fusing (recv=rxtest-02 skew=40ms lag=107ms n=2)
+FUSED FFFFE1RFXCOM n=2 forwarded=1 via=rxtest-01@0ms,rxtest-02@40ms
+```
+`managerLayer.js` received exactly the two logical events (and, with a test address absent from
+`buttons.config`, logged `devices -->` empty → **no light was toggled** by the test).
+
+### Test harness (`LinuxServerScripts/button2sONOFF/test_fusion.sh`)
+`bash test_fusion.sh` — sources the real script with a stubbed clock and fixture receivers, no
+`.77`, no socat, no radios. Covers: mixed v1+v2 fusion (4 receptions → 1 forward + a `FUSED`
+summary listing `nodeMCU-0@v1`), the legacy debounce still swallowing a stale v1 re-report, the
+`FUSION_ENABLED=1` tight window letting a real second press through, the **KINETIC regression
+path**, and invalid input. Runs green on macOS and on `.77` (bash 5.2).
 
 ---
 
 ## 4. Rollout plan
 
-1. **Bench:** flash ONE receiver (whichever box is nearest — identity is now chip-derived,
+1. ✅ **Bench:** flash ONE receiver (whichever box is nearest — identity is now chip-derived,
    so it no longer matters which image goes on which unit); serial banner prints the
    `rx-XXXXXX` id → **write the `receivers.config` line while the device is in hand**
    (flash-time mapping ritual, §3). Dual-run against the legacy node — verify epoch values,
    sync time at boot, IDENTIFY blink, message parse both sides, OTA reachable.
-2. **Measure** (§5) with one v2 + one v1 receiver.
-3. **Flash** remaining receivers opportunistically (physical access required — this is the
-   slow part; server stays compatible meanwhile).
-4. **Switch** `buttonPressReceiver.sh` fusion window on once ≥2 receivers are v2.
-5. **Cleanup:** after all v2, optionally remove the legacy debounce path.
+   → done on the bench D1 mini (`rx-241002`), then **installed at the fridge** (IP `.231`).
+2. ✅ **Measure** (§5) with one v2 + two v1 receivers — done, see §5 (also gave the window `W`).
+3. ✅ **Server-side fusion** built, unit-tested and deployed (§3). The deployed nodeMCUs still
+   run v1 and are untouched by it.
+4. ⬜ **Flash** remaining receivers to v2 (physical access required — the slow part; server stays
+   compatible meanwhile). **Then** flip `FUSION_ENABLED=1` in `buttonPressReceiver.sh` (or export
+   it) and restart the receiver.
+5. ⬜ **Cleanup:** after all v2, optionally remove the legacy debounce path.
+
+### Operational note — receivers reconnect **lazily**
+`ensureSocketConnection()` is called from `sendDataToServer()` (`RFreceiver_esp8266.ino:270`),
+i.e. a receiver opens its TCP connection at boot and, if that socket is broken, reconnects
+**on its next transmission**. Consequence: after restarting `buttonPressReceiver.sh` (or booting
+`.77`) the fleet shows **no connections until each unit's next button press**, and `ss` on
+`:1234` deliberately looks empty in the meantime. This is pre-existing v1 behaviour, not a
+regression — just do not read "no connections" as "receivers are down". The KINETIC ESP32
+reconnects on its own (it retries and re-sends its boot banner, which the RFXCOM preprocessor
+correctly logs as `INVALID` and ignores).
 
 ## 5. Pre-flight measurements (can start NOW on v1 firmware)
 - Log every message (including debounced ones) with server arrival time → compute
@@ -245,9 +287,11 @@ conclude the RXB6 is worse until (2) runs; a superhet RXB6 should out-hear the c
 - [ ] NTP source for receivers: LAN-local server (where?) vs WAN pool? Router LXC `.1`
       runs dnsmasq only; `.77` is NTP *client* — who becomes the LAN time master?
       (v2.1 defaults to `pool.ntp.org` + `time.google.com` in `secrets.h` until decided.)
-- [ ] Quorum policy: act on first arrival (fastest) vs require 2-of-N agreement
-      (noise-rejection)? Make it a config knob; default = first arrival + log count.
-- [ ] Does `managerLayer.js` want the fused event record (code, t, seen-by, latencies)?
+- [x] Quorum policy: **first arrival + log count** (2026-10-18) — the first reception is
+      forwarded immediately and later copies are logged as confirmations. Rejecting noise is
+      still possible later via `FUSION_ENABLED`/window tuning, but nothing needs 2-of-N today.
+- [ ] Does `managerLayer.js` want the fused event record (code, t, seen-by, latencies)? Today it
+      only gets the normalized `buttonID`, so the health data lives in the receiver log.
 - [ ] Are there really receivers named `nodeMCU-00` / `nodeMCU-10` in the log, or is that a
       TCP-coalescence artifact? (Check before assuming 4 receivers.)
 - [ ] `identify.sh` listener design: replace `socat -u TCP-LISTEN:1234` with a
@@ -266,10 +310,26 @@ conclude the RXB6 is worse until (2) runs; a superhet RXB6 should out-hear the c
       correct logic only survives in `notMantained/`. Do not "refactor" this again.)*
 - [ ] `socket.js:27` — `rxOffestFile` typo (undefined var → would crash every 10 min).
       Dormant; fix or archive to `old-scripts/`.
-- [ ] `.77` has stale `socat -u TCP-LISTEN:1234` processes (Oct 9/10/14 leftovers) next to
-      the live one — hygiene cleanup.
+- [x] `.77` had stale `socat -u TCP-LISTEN:1234` processes (Oct 9/10/14 leftovers) next to the
+      live one — **cleaned 2026-10-18** by the receiver restart (the restart procedure kills the
+      leftover `socat` *before* starting the new one; a surviving `socat` would keep the port
+      bound and silently starve the new listener).
+- [x] `buttonPressReceiver.sh` housekeeping (2026-10-18): removed the broken `mkdir -p ""`
+      (unset `LAST_PRESS_DIR` → `mkdir: cannot create directory ''` on every start) and the
+      misleading `stdbuf -o0 nc -lk <port>` debug echo that claimed nc while actually running
+      socat.
 - [ ] `buttonPressReceiver.sh` debounce tracks only the LAST buttID — alternating buttons
-      within 2 s bypass the debounce entirely (may be acceptable; note it).
+      within 2 s bypass the debounce entirely (may be acceptable; note it). The fusion layer
+      does not change this: it only improves the *same-button* case.
+- [ ] **KINETIC debounce key is unstable by construction.** `preprocess_kinetic.sh` emits
+      `SWITCH_ID 1 KINETIC <receiver> <rssi>` — `BUTTON_NUMBER` is **hard-coded to 1** (the
+      `BUTTON_N` field is ignored) and the receiver + RSSI are appended, so the debounce key
+      becomes `DEFF2E1KINETICESP32_RX_01-84dBm`. Two receptions of one press at different dBm
+      look like two different buttons → the 2 s debounce cannot merge them (harmless today:
+      one KINETIC receiver, one message per press). Proper fix = parse `BUTTON_N` into
+      `BUTTON_NUMBER` and drop receiver/RSSI from the key, treating them as health data.
+      Left untouched deliberately (the KINETIC path must keep working as-is); recorded here so
+      it is not "fixed" accidentally by the fusion work.
 - [ ] `preprocess_rfxcom.sh` position-based parsing is brittle; the timestamp field is
       dropped today (fusion layer will consume it instead).
 
@@ -280,8 +340,13 @@ conclude the RXB6 is worse until (2) runs; a superhet RXB6 should out-hear the c
    - `ssh root@192.168.1.77 'tail -30 /root/Domotica/LinuxServerScripts/button2sONOFF/logs/buttonPressReceiver.sh.log'`
    - `ssh root@192.168.1.77 'ss -tlnp | grep -E ":1234\b|:5678\b"; screen -ls'`
 4. Firmware lives in `Arduino/RFreceiver_esp8266/` (v2.1 = committed, flashed & verified);
-   server in `LinuxServerScripts/button2sONOFF/buttonPressReceiver.sh`.
-   - Bench unit: D1 mini + RXB6, id **`rx-241002`** (still needs its `receivers.config` line).
+   server in `LinuxServerScripts/button2sONOFF/buttonPressReceiver.sh`
+   (+ `test_fusion.sh` for the fusion logic).
+   - **`rx-241002`** = D1 mini + RXB6, mapped to `rf-fridge` in `config/receivers.config`,
+     installed at the fridge, IP `192.168.1.231`.
+   - `nodeMCU-0` / `nodeMCU-1` still run **v1** (raw `millis()`; the `rx-XXXXXX` they send is
+     *not* really a chip id) and are untouched. Their RF module is still unverified.
+   - `ESP32_RX_01` = the KINETIC receiver (ESP32 + CC1101), on `:5678`.
    - Serial capture on macOS: `screen -L -dmS cap /dev/cu.usbserial-* 115200`, then read
      `screenlog.0`. `arduino-cli monitor` reads zero bytes here, and opening the port does
      **not** reliably reset the board — have the sketch print on a loop instead.
@@ -290,3 +355,31 @@ conclude the RXB6 is worse until (2) runs; a superhet RXB6 should out-hear the c
    - USB flash: `arduino-cli upload -p /dev/cu.usbserial-* --fqbn esp8266:esp8266:nodemcuv2 Arduino/RFreceiver_esp8266/`
    - serial: `arduino-cli monitor -p /dev/cu.usbserial-* -c baudrate=115200`
    - OTA flash (after first USB flash): hostname = `rx-XXXXXX`, password from `secrets.h`
+
+### Restarting the receiver safely (do NOT just `screen -X quit`)
+`button2sonoff.sh` starts it as a detached screen session named `buttonPressReceiver.sh`, and
+`tee`s stdout into `logs/buttonPressReceiver.sh.log`. A leftover `socat` keeps `:1234`/`:5678`
+**bound**, so the new listener would fail to bind and the fleet would go dark silently. Order:
+1. `screen -S buttonPressReceiver.sh -X quit`
+2. `pkill -f 'button2sONOFF/buttonPressReceiver.sh'`; `pkill -f 'socat -u TCP-LISTEN:1234'`;
+   `pkill -f 'socat -u TCP-LISTEN:5678'`
+3. wait until `ss -ltn | grep -E ':(1234|5678) '` is empty (must verify, do not assume)
+4. re-create the session with the same `screen -dmS ... bash -c '... | tee -a <log>'` shape
+5. verify both listeners + the `=== listening: ... ===` lines in the log, then remember the
+   lazy-reconnect note in §4 (receivers stay quiet until their next press).
+`managerLayer.js` opens the FIFO `r+`, so restarting only the receiver never blocks the writer
+and never needs the manager restarted.
+
+## 9. Next
+
+1. **Flash the deployed nodeMCUs to v2** (take each down, USB-flash, read `rx-XXXXXX` from the
+   serial banner, add its `receivers.config` line, put it back). Server keeps working on v1.
+2. **Then** enable the tight window: `FUSION_ENABLED=1` + restart the receiver, and watch for
+   `FUSED … n=2`/`n=3` lines with sensible `skew`/`lag` to confirm fusion end-to-end.
+3. Watch `lag` for a day — a receiver whose `lag` is huge or negative is not NTP-synced.
+4. Optional (still open from §5): straight 17.3 cm ¼-wave antenna on the fridge unit + a
+   co-located A/B against a nodeMCU, to settle RXB6 sensitivity properly.
+5. Optional: the ESP32/CC1101 route — add the LightwaveRF decode to `ESP32_RX_01`'s firmware
+   (keeping KINETIC working) and get **RSSI** into the fusion record. The firmware source is
+   **not in this repo** — it must be recovered from wherever it was written (the flashed binary
+   can only be dumped, not decompiled to source).

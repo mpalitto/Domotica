@@ -10,15 +10,22 @@
 - **Decision**: Option A — `configTime()` SNTP on the ESP8266, field 3 of the message becomes
   UTC epoch-ms of the first RF pulse (`0` or small value = legacy v1 receiver → old debounce
   path; server accepts both during rollout).
-- **Status (2026-10-18)**: firmware **v2.1 flashed & verified on the bench D1 mini (`rx-241002`)** —
-  WiFi, SNTP epoch stamping, chip-ID identity, ArduinoOTA, IDENTIFY all working; a real press
-  emits `0A1400a <code> <epoch-ms> rx-241002` and the server parses it to the same buttonID as
-  the legacy units. **Found & fixed a decode bug**: the ESP8266 "refactor" had truncated the
-  10-char LightwaveRF code to `F4AA0D-`, which the server reads as `INVALID` and drops; the
-  original algorithm (only surviving in `notMantained/YUN-LWRF-receiver-v0.2`) was restored in
-  `decodePulseData()` — **do not refactor that function again**. Next: `receivers.config` line
-  for `rx-241002` + epoch-fusion window in `buttonPressReceiver.sh`; then USB-flash
-  nodeMCU-0/1. Server must stay backward-compatible (epoch ≥10¹² detect) until all are updated.
+- **Status (2026-10-18, updated)**: firmware **v2.1 running in service** on the D1 mini + RXB6
+  `rx-241002`, **installed at the fridge** (IP `.231`, mapped to `rf-fridge` in
+  `button2sONOFF/config/receivers.config`). **Server-side epoch fusion is DELIVERED and live** in
+  `button2sONOFF/buttonPressReceiver.sh` (v2-epoch grouping + per-receiver `skew`/`lag` logging;
+  verified with `test_fusion.sh` and a live smoke test); the v1 nodeMCUs keep the old 2 s path.
+  Remaining: USB-flash `nodeMCU-0/1` to v2.1 (server stays backward-compatible meanwhile), then
+  set `FUSION_ENABLED=1`. The KINETIC receiver is **`ESP32_RX_01`** (ESP32 + CC1101/E07-M1101D,
+  GDO0→GPIO13, `:5678`, RSSI) — its firmware source is **not in the repo** and is wanted for the
+  later "add LightwaveRF + RSSI to it" step. **Found & fixed a decode bug**: the ESP8266 refactor
+  had truncated the LightwaveRF code to `F4AA0D-`, read by the server as `INVALID` and dropped;
+  the original algorithm (only surviving in `notMantained/YUN-LWRF-receiver-v0.2`) was restored in
+  `decodePulseData()` — **do not refactor that function again**.
+- **Restarting `buttonPressReceiver.sh`**: quit the screen session **and kill the leftover
+  `socat`** (it keeps `:1234`/`:5678` bound, so a new listener would silently starve) — full
+  recipe in `DOCs/RF-EVENT-FUSION.md` §8. Note receivers reconnect **lazily on their next
+  transmission**, so "no connections on `:1234`" after a restart is normal, not an outage.
 - **Read `DOCs/RF-EVENT-FUSION.md` first** — it is the source of truth (design, rollout plan,
   open questions, fix list, resume commands).
 
