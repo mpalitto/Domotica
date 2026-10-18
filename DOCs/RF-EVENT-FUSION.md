@@ -291,6 +291,24 @@ path**, and invalid input. Runs green on macOS and on `.77` (bash 5.2).
    tool works on this unit too). **Note:** `nodeMCU-0` never had an OTA path in any v1 revision,
    so USB was the only option — this was the blocker, now cleared.
    Remaining: **reinstall it in the corridor**, then flip `FUSION_ENABLED=1`.
+   **Bench press test (2026-10-19, board still on the Mac's USB): PASS — and it is the first real
+   two-`v2` fusion group** (all earlier evidence had a v1 member). Five presses of the kitchen
+   column (button 1) produced exactly five `0A1400a F4AA0D0101 <epoch-ms> rx-058ef5` messages on
+   the wire plus five from `rx-55d68f`, and the server fused them: `FUSED 4AA0D1RFXCOM n=2
+   forwarded=1 via=rf-central@0ms,rf-laundry@540ms` (skews 540/315/531/389 ms, none > W).
+   - The central unit's clock is **within ±60 ms of `.77`** (lag −46/−55/−48/+24 ms). The
+     laundry's −443…+578 ms is *not* clock error but **repeat-lock**: its weaker signal makes it
+     lock onto a later repetition of the burst, so its "first pulse" stamp is genuinely later.
+   - Both arrival orders occur, and both are handled: on one press the laundry arrived first and
+     the central was attached as confirmation (`press start (recv=rf-laundry …)` then `fusing
+     (recv=rf-central skew=396ms n=2)`, `via=rf-laundry@0ms,rf-central@396ms`).
+   - Locally the board decoded 23 clean copies plus **2 corrupted ones** (`F4AA0D1CC1`, one nibble
+     off); only the clean code ever reached `.77` — the confidence filter suppresses phantom
+     presses as intended.
+   - ⚠ **Watch at `FUSION_ENABLED=1`:** skew 315–540 ms against `FUSION_WINDOW_MS=1000` is only
+     ~2× margin. If the laundry ever locks onto a much later repeat, one physical press could
+     split into two groups and toggle a light twice. Since nearby *presses* are 1.9–6.7 s apart
+     (§5), widening W to ~1500 ms is the safe remedy if that is ever seen — do not widen blindly.
 5. ⬜ **Cleanup:** after all v2, optionally remove the legacy debounce path.
    → 2026-10-19: **all three receivers are v2.2** — `rx-241002` (fridge), `rx-55d68f` (laundry),
    `rx-058ef5` (central). Note the flash image is **deterministic**: compiling the repo produced
