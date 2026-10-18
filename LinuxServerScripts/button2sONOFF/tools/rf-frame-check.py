@@ -112,7 +112,7 @@ def main():
           f"(ctrl-C to stop early)", flush=True)
 
     end = time.time() + args.seconds
-    seen = complete = split = merged = 0
+    seen = complete = split = merged = terminator_only = other = 0
     problems = []
     reader = frames(iface, proto)
     while time.time() < end:
@@ -127,21 +127,28 @@ def main():
                 print(f"{stamp()} {src}:{sport} -> {dst}:{dport} len={len(payload)} {payload!r}",
                       flush=True)
                 continue
-            # TCP: classify the framing of RF lines.
+            # TCP: classify the framing of a receiver line. Each line must arrive as
+            # exactly one write() -> one segment, terminator included. The `<rx-id>
+            # connected` hello uses the same sendLine() path, so it can be checked
+            # without a button press (reset a board on USB and watch).
             n_msgs = payload.count(b"0A1400a")
             verdict = ""
             if n_msgs > 1:
                 merged += 1
                 verdict = "  <<< MERGED (two messages in one segment)"
-            elif n_msgs == 1:
-                if payload.rstrip(b"\r\n") and payload.endswith((b"\n",)):
-                    complete += 1
-                    verdict = "  ok (complete line)"
-                else:
-                    split += 1
-                    verdict = "  <<< SPLIT (message without its terminator)"
-            if problems is None:
-                problems = []
+            elif payload.rstrip(b"\r\n") == b"":
+                # bare terminator: consequence of a SPLIT (the other half of a line)
+                terminator_only += 1
+                verdict = "  --- terminator-only (other half of a SPLIT?)"
+            elif payload.endswith(b"\n"):
+                complete += 1
+                verdict = "  ok (complete line)"
+            elif all(32 <= c < 127 or c in b"\r\n" for c in payload):
+                split += 1
+                verdict = "  <<< SPLIT (line without its terminator)"
+            else:
+                other += 1
+                continue  # not a text line (noise/binary) - not our business
             if verdict.startswith("  <<<"):
                 problems.append(f"{stamp()} {src}:{sport} len={len(payload)} {verdict.strip()}")
             if not args.quiet or verdict.startswith("  <<<"):
@@ -153,14 +160,19 @@ def main():
         return 0
 
     print(f"\n# segments with payload: {seen}   complete-line: {complete}   "
-          f"split: {split}   merged: {merged}")
+          f"split: {split}   merged: {merged}   terminator-only: {terminator_only}   "
+          f"other: {other}")
     for p in problems:
         print("# PROBLEM " + p)
     if split or merged:
         print("# VERDICT: framing bug present — each line must be ONE write() "
               "(firmware sendLine(), see DOCs/RF-EVENT-FUSION.md section 7)")
         return 1
-    print("# VERDICT: clean (no split/merged RF lines seen)")
+    if not complete:
+        print("# VERDICT: no receiver line seen — nothing to judge (press a button, or "
+              "reset a board on USB to catch its hello)")
+        return 0
+    print("# VERDICT: clean (no split/merged lines seen)")
     return 0
 
 
