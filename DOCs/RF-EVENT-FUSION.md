@@ -1,7 +1,7 @@
 # RF Event Fusion — Synchronized Receiver Timestamps
 
 **Project start:** 2026-10-18
-**Status:** DECIDED — Option A (SNTP epoch-ms on receivers). Firmware work pending (physical flashing).
+**Status:** DECIDED + FIRMWARE DRAFTED (v2.1, compile-verified on core 3.1.2) — pending: review, USB flash of the two nodes, server-side fusion + `receivers.config`.
 **Owner:** Matteo
 **Read this first** in any future session before touching RF receiver code or `buttonPressReceiver.sh`.
 
@@ -73,28 +73,69 @@ FIFO (logs/button_fifo) → managerLayer.js (:7777) → WiFi-first / RF-fallback
   (chrony/ntp server on `.77` or the router LXC `.1`) so sync survives WAN outages;
   fallback `pool.ntp.org`.
 
-### Message format v2 (backward compatible)
+### Message format v2 (backward compatible, one universal image for all receivers)
 ```
-0A1400a F4B38D1101 1760794215123 nodeMCU-1
-        └─ code     └─ epoch ms of first pulse (UTC)
+0A1400a F4B38D1101 1760794215123 rx-8c02d7
+        └─ code     └─ epoch ms of first pulse (UTC)   └─ chip-derived identity
 ```
-- Field 3 becomes epoch-ms (13 digits). Server rule: **value ≥ 10¹² → epoch mode (v2
+- **Field 1 stays the literal `0A1400a` header** — `preprocess_rfxcom.sh` validates by fixed
+  positions ([0:6]=`0A1400`, [9:5], [14:3], [17:1]); do not put anything else there.
+- Field 3 = epoch-ms (13 digits). Server rule: **value ≥ 10¹² → epoch mode (v2
   receiver); smaller / `0` → legacy `millis()` (v1)** → mixed firmware coexists during rollout.
 - `0` = "never NTP-synced" → server uses legacy debounce path for that message.
-- Field order unchanged → `preprocess_rfxcom.sh` position parsing ([9:5], [14:3], [17:1])
-  is unaffected.
+- **Field 4 = `rx-XXXXXX`** derived from `ESP.getChipId()` (immutable, unique). **No friendly
+  names in firmware** — a reflashed board can never impersonate another, and the same
+  compiled image fits every receiver.
+
+### Identity → location mapping (server-side `receivers.config`)
+Friendly names live on `.77`, same spirit as `sONOFF.config`:
+```
+# chipID : friendly-name : location : notes
+rx-8c02d7 : nodeMCU-laundry : laundry    : by the fuse box
+rx-3f2a1b : nodeMCU-living  : living rm  : near south wall
+```
+Applied at log/forward time in `buttonPressReceiver.sh` → logs, watchdog and managerLayer
+see `nodeMCU-laundry`; the chip ID is only the machine key. Renames/moves = edit config,
+never reflash.
+
+**How a chip ID gets mapped to a room (three ways, in order of use):**
+1. *Flash-time ritual (initial)*: flashing v2 requires USB anyway — the device in your hand
+   prints `rx-XXXXXX` on serial at boot; write the config line while you hold it. Impossible
+   to mix up.
+2. *Power-cycle probe (fallback, zero tooling)*: unplug the box you're standing at →
+   whichever `rx-XXXX` disappears from the log is that box.
+3. *IDENTIFY command (daily driver)*: `identify.sh rx-XXXX` on `.77` pushes `ID` down the
+   receiver's **existing** TCP connection (TCP is bidirectional; v1 just never used the
+   return path) → firmware blinks the built-in LED 10× (GPIO2, active-low) and replies
+   `<id> IDENTIFY OK`. ~15 lines of firmware + bidirectional-izing the socat listener
+   (currently `socat -u`, unidirectional — needs an exec-wrapper with a per-connection
+   FIFO; still pure bash).
 - Future (Tier 3): epoch-µs or burst-sequence number can be added as a 5th field without
   breaking v1/v2 parsers.
 
-### Firmware changes (per receiver, ESP8266 Arduino core)
-1. `configTime(0, 0, "ntp.<lan-host>", "pool.ntp.org")` in `setup()` (UTC, no TZ/DST).
-2. Wait for sync at boot (e.g. `time(nullptr) > 1600000000`, timeout ~20 s → run unsynced).
-3. Maintain an anchor pair `(anchor_epoch_ms, anchor_millis)` refreshed on each loop/sync;
-   on first valid RF pulse capture `pulse_millis`; at send time:
-   `rf_epoch_ms = anchor_epoch_ms + (pulse_millis − anchor_millis)`.
-4. Monotonicity guard: never send an epoch lower than the previous one (clamp forward).
-5. If never synced → send `0` in field 3.
-6. (Optional, Tier 2 polish) sub-ms via `micros()` anchor → epoch-µs.
+### Firmware changes — IMPLEMENTED in v2.1 draft (2026-10-18, compile-verified, not yet flashed)
+1. ✅ `configTime(0, 0, NTP_SERVER_1, NTP_SERVER_2)` in `setup()` (UTC, no TZ/DST);
+   wait up to 15 s at boot for sync, else run unsynced and send `0`.
+2. ✅ RF-time stamp: `nowEpochMs()` captured at the first valid pulse of the burst
+   (`waitForValidPulse`), monotonic guard at send (never run backwards).
+3. ✅ Identity: `rx-%06x` from `ESP.getChipId()`; field 1 stays the `0A1400a` header.
+4. ✅ ArduinoOTA (hostname = rx-id, password in `secrets.h`) — future updates over WiFi.
+5. ✅ IDENTIFY listener: poll `espClient.available()` in loop; `ID` → blink LED 10× →
+   reply `<id> IDENTIFY OK`.
+6. ✅ `secrets.h` (gitignored, template in `secrets.h.example`): WiFi creds, OTA password,
+   NTP servers. Default `pool.ntp.org` + `time.google.com` pending the LAN-time-source
+   open question (§6).
+7. RF decode pipeline left byte-identical to v1 (no refactoring of what works).
+
+**Measured fit (nodemcuv2, core 3.1.2, default 4M2M dual-OTA layout):**
+| Resource   | v1        | v2.1      | Delta |
+|------------|-----------|-----------|-------|
+| IROM/app   | 249.7 KB (23% of 1 MB slot) | 290.4 KB (27%) | +41 KB (OTA+SNTP+IDENTIFY) |
+| IRAM       | 60,375 (92%) | 60,919 (92%) | +544 B — OTA lives in flash |
+| RAM globals| 30.1 KB (37%) | 31.1 KB (38%) | +1 KB |
+
+Flash/OTA upload: `arduino-cli upload -p <port> --fqbn esp8266:esp8266:nodemcuv2 Arduino/RFreceiver_esp8266/`
+(afterwards: `arduino-cli upload -p <port> --fqbn esp8266:esp8266:nodemcuv2 --input-dir ...` or `espota.py -r` for OTA).
 
 ### Server fusion (bash, in `buttonPressReceiver.sh` — no Python, per project rules)
 - Parse field 3; if ≥ 10¹² → epoch mode. `arrival = $(date +%s%3N)`.
@@ -112,8 +153,11 @@ FIFO (logs/button_fifo) → managerLayer.js (:7777) → WiFi-first / RF-fallback
 
 ## 4. Rollout plan
 
-1. **Bench:** flash ONE receiver (suggest nodeMCU-1) with v2; dual-run against legacy —
-   verify epoch values, sync time at boot, message parse both sides.
+1. **Bench:** flash ONE receiver (whichever box is nearest — identity is now chip-derived,
+   so it no longer matters which image goes on which unit); serial banner prints the
+   `rx-XXXXXX` id → **write the `receivers.config` line while the device is in hand**
+   (flash-time mapping ritual, §3). Dual-run against the legacy node — verify epoch values,
+   sync time at boot, IDENTIFY blink, message parse both sides, OTA reachable.
 2. **Measure** (§5) with one v2 + one v1 receiver.
 3. **Flash** remaining receivers opportunistically (physical access required — this is the
    slow part; server stays compatible meanwhile).
@@ -129,11 +173,15 @@ FIFO (logs/button_fifo) → managerLayer.js (:7777) → WiFi-first / RF-fallback
 ## 6. Open questions
 - [ ] NTP source for receivers: LAN-local server (where?) vs WAN pool? Router LXC `.1`
       runs dnsmasq only; `.77` is NTP *client* — who becomes the LAN time master?
+      (v2.1 defaults to `pool.ntp.org` + `time.google.com` in `secrets.h` until decided.)
 - [ ] Quorum policy: act on first arrival (fastest) vs require 2-of-N agreement
       (noise-rejection)? Make it a config knob; default = first arrival + log count.
 - [ ] Does `managerLayer.js` want the fused event record (code, t, seen-by, latencies)?
 - [ ] Are there really receivers named `nodeMCU-00` / `nodeMCU-10` in the log, or is that a
       TCP-coalescence artifact? (Check before assuming 4 receivers.)
+- [ ] `identify.sh` listener design: replace `socat -u TCP-LISTEN:1234` with a
+      bidirectional exec-wrapper (per-connection FIFO for outbound commands), still bash.
+      Needs care: must not break the `while read` pipeline in `buttonPressReceiver.sh`.
 
 ## 7. Discovered issues / fix list (this session, 2026-10-18)
 - [ ] `socket.js:27` — `rxOffestFile` typo (undefined var → would crash every 10 min).
@@ -151,5 +199,10 @@ FIFO (logs/button_fifo) → managerLayer.js (:7777) → WiFi-first / RF-fallback
 3. Ground truth commands:
    - `ssh root@192.168.1.77 'tail -30 /root/Domotica/LinuxServerScripts/button2sONOFF/logs/buttonPressReceiver.sh.log'`
    - `ssh root@192.168.1.77 'ss -tlnp | grep -E ":1234\b|:5678\b"; screen -ls'`
-4. Firmware lives in `Arduino/RFreceiver_esp8266/`; server in
-   `LinuxServerScripts/button2sONOFF/buttonPressReceiver.sh`.
+4. Firmware lives in `Arduino/RFreceiver_esp8266/` (v2.1 draft = current working tree);
+   server in `LinuxServerScripts/button2sONOFF/buttonPressReceiver.sh`.
+5. Toolchain on the Mac (installed 2026-10-18): `arduino-cli` + `esp8266:esp8266` core 3.1.2.
+   - compile: `arduino-cli compile --fqbn esp8266:esp8266:nodemcuv2 Arduino/RFreceiver_esp8266/`
+   - USB flash: `arduino-cli upload -p /dev/cu.usbserial-* --fqbn esp8266:esp8266:nodemcuv2 Arduino/RFreceiver_esp8266/`
+   - serial: `arduino-cli monitor -p /dev/cu.usbserial-* -c baudrate=115200`
+   - OTA flash (after first USB flash): hostname = `rx-XXXXXX`, password from `secrets.h`

@@ -60,6 +60,7 @@ eWeLink-Proxy/nodejs/backups/
 
 # Ignore secrets files
 LinuxServerScripts/cert.*
+Arduino/RFreceiver_esp8266/secrets.h
 
 # Windows image file caches
 Thumbs.db
