@@ -40,7 +40,10 @@
   it — it clears itself on the unit's next RF press. So: **never start an OTA on a receiver you
   cannot physically reach**, and if a receiver looks dead, cross-check from `.33`/`.11` before
   believing it. A **handshake-only** probe (send the invitation, read `AUTH`, stop — no transfer,
-  nothing to wedge) is the safe reachability test.
+  nothing to wedge) is the safe reachability test. **Decision (2026-10-19): OTA stays in the
+  firmware as a bench-only tool** — removal would cost a USB trip for every installed unit and buy
+  only 37.8 KB of flash plus 544 B of IRAM (measured), so bench OTA it is; see
+  `DOCs/RF-EVENT-FUSION.md` §6/§7.
 - **Restarting `buttonPressReceiver.sh`**: quit the screen session **and kill the leftover
   `socat`** (it keeps `:1234`/`:5678` bound, so a new listener would silently starve) — full
   recipe in `DOCs/RF-EVENT-FUSION.md` §8. Note receivers reconnect **lazily on their next

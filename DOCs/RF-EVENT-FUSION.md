@@ -358,6 +358,24 @@ conclude the RXB6 is worse until (2) runs; a superhet RXB6 should out-hear the c
       the server wrapper is missing). Nice-to-have while we're there: put the **firmware version**
       in the reply, so the whole fleet can be audited remotely (that is what would have made the
       fridge's wedged-OTA state visible without a packet sniffer).
+- [x] **RESOLVED 2026-10-19 — OTA stays in the firmware, demoted to a bench-only tool.**
+      Prompted by the failed field test (§7 "OTA" #4) and the obvious question "then should we just
+      delete OTA?": **no.** Bench OTA works (v2.1→v2.2 on `rx-55d68f`), so nothing is broken — what
+      fails is the *transport* at installed positions (sleepy/marginal Wi-Fi vs a 326 KB download),
+      and deleting the code would not fix that, it would only remove the one remote path we have.
+      The cost of keeping it was measured, not guessed (A/B compile, `esp8266:esp8266:nodemcuv2`,
+      2026-10-19): **flash 290,540 → 251,816 B (−37.8 KB, 27%→24%), IRAM 60,919 → 60,375 (−544 B,
+      92%), global RAM 31,152 → 30,512 (−640 B)**. So keeping OTA costs 4% of the app slot plus
+      **12% of the remaining *free* IRAM** (4617 → 5161 B) — IRAM being the resource that matters
+      (RF decode must stay ISR-resident). Against that, *removing* it costs a **physical USB trip
+      for every installed unit** — starting with the laundry — which is exactly what OTA exists to
+      avoid. **Decision: keep it, use it only on the bench**; removal can ride along with the next
+      firmware change that needs USB anyway (or be reconsidered if IRAM headroom becomes the
+      binding constraint). If field OTA ever becomes a requirement, fix the transport rather than
+      the feature: `WiFi.setSleepMode(WIFI_NONE_SLEEP)` (units are mains-powered, so the power cost
+      is irrelevant), the straight ¼-wave antenna (§5), and an OTA-stall watchdog so a dead
+      transfer reboots instead of wedging the listener. Test any such change on the **fridge at its
+      kitchen spot** — reachable by hand — never on the laundry.
 
 ## 7. Discovered issues / fix list (this session, 2026-10-18)
 - [x] **Line framing: ~13 % of receptions were silently dropped (FIXED 2026-10-18 — firmware v2.2
