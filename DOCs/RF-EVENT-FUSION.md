@@ -225,6 +225,22 @@ FUSED FFFFE1RFXCOM n=2 forwarded=1 via=rxtest-01@0ms,rxtest-02@40ms
 `managerLayer.js` received exactly the two logical events (and, with a test address absent from
 `buttons.config`, logged `devices -->` empty → **no light was toggled** by the test).
 
+#### Reading the fusion log — two traps (both hit for real on 2026-10-18)
+1. **`FUSED` is printed when the group *closes*, i.e. on the next *different* press** — not when
+   the press happens. `flush_fusion` runs in step 4, just before a new group is opened, so the
+   `FUSED …` line appears *after* the new press's `buttonID:` line and can describe a group from
+   minutes earlier (observed: a 22:59 group logged at 23:07, which reads as a misattribution but
+   is not one). Read `FUSED` as "the *previous* group is now complete". A group that never
+   receives a second copy (`COUNT > 1`) prints nothing at all.
+2. **A v1 reception cannot *open* a group** — it has no comparable epoch, so only a v2 event sets
+   the group key. If the v1 copy arrives first it simply goes down the legacy debounce path and is
+   forwarded; the group is then opened by the first v2 arrival, and the v1 copy joins afterwards
+   as a `legacy-stamp` confirmation. So `n=` counts only copies that arrived *after* the group
+   opened: an early v1 copy is a *forwarding*, not a *count* (live example: press 1 of `4AA0D` gave
+   `n=2` naming only `rf-laundry` and `rf-fridge`, although `nodeMCU-0` had also heard it).
+   Related: with `FUSION_ENABLED=0` the fusion path never forwards, so **`forwarded=0` is the
+   normal value on every `FUSED` line** — the legacy debounce did the forwarding instead.
+
 ### Test harness (`LinuxServerScripts/button2sONOFF/test_fusion.sh`)
 `bash test_fusion.sh` — sources the real script with a stubbed clock and fixture receivers, no
 `.77`, no socat, no radios. Covers: mixed v1+v2 fusion (4 receptions → 1 forward + a `FUSED`
@@ -360,6 +376,16 @@ conclude the RXB6 is worse until (2) runs; a superhet RXB6 should out-hear the c
       `192.168.1.208:52051 -> 192.168.1.77:1234  flags=0x18 len=21  payload=b'rx-55d68f connected\r\n'`
       — the whole line, terminator included, in **one** TCP segment (the same `sendLine()` path
       RF data uses). Do not reintroduce a second write per line.
+      **Same-press contrast — the clearest evidence of all (2026-10-18, press of `4AA0D`).**
+      One press, three receivers, all captured on `.77:1234`:
+      - `nodeMCU-0` (v1): `len=38 b'0A1400a F4AA0D1101 760276312 nodeMCU-0'` **followed 9 ms later
+        by** `len=2 b'\r\n'` — the old two-write split, live and undeniable;
+      - `rx-55d68f` and `rx-241002` (v2.2): `len=44 b'0A1400a F4AA0D0101 <epoch-ms> rx-XXXXXX\r\n'`
+        — one complete segment each.
+      And a press of `4A89A` captured the damage on the server side: the v1 fragment became part of
+      the *next* line —
+      `0A1400a F4A89A1101 760010212 nodeMCU-00A1400a F4A89A0101 1792357636497 rx-55d68f`.
+      **That merged line is the bug; `nodeMCU-0` must be flashed to stop producing it.**
 - [x] **OTA: works, but it is a one-shot protocol with two nasty failure modes (2026-10-18,
       verified from `.77`).** `espota.py` (bundled with core 3.1.2) does
       invitation → `AUTH <nonce>` → `AUTH <cnonce> <digest>` → `OK` over **UDP 8266**, then the
