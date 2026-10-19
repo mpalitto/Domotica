@@ -51,6 +51,9 @@ The new `button2sONOFF/` system tries WiFi first (`eWeLink Proxy`), falls back t
 | `fix-ipv6-relay.sh` | Gives the LAN real IPv6 via an NDP relay on the router LXC (`-y` apply, `-s` status, `-u` remove) |
 | `ipv6-relay-agent.sh` | LXC-side agent deployed to `/usr/local/sbin/ipv6-relay.sh` (`install`/`uninstall`/`harden`/`setup`/`teardown`/`refresh`/`status`) |
 | `IPV6-RELAY.md` | Design + operational runbook for the IPv6 relay (deploy, verify, troubleshoot, roll back) |
+| `serialid.py` | Reset an ESP8266 RF receiver over USB (DTR/RTS toggle) and print its boot banner — the way to identify *which* unit is plugged in |
+| `serialcap.py` | Stream a running receiver's serial output to a file (no reset, flushed) — see press decodes live |
+| `serialreset.py` | Reset **and** stream: if the boot banner lands in the file the reader is proven live, so any later silence is real RF silence (bench work) |
 
 All scripts resolve their siblings relative to their own location, so this
 directory can be checked out anywhere.

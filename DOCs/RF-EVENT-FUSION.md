@@ -575,8 +575,8 @@ conclude the RXB6 is worse until (2) runs; a superhet RXB6 should out-hear the c
         the network, the sketch or the server.
       - **Capture path proven** (so this is real silence, not a dead reader): `serialreset.py`
         (resets DTR/RTS then streams; `serialcap.py` streams without resetting) put the boot
-        banner in the capture file. Both scripts live in the session temp dir; `serialcap.py`
-        deliberately does not reset.
+        banner in the capture file. Both scripts are committed under `macos/` (§8);
+        `serialcap.py` deliberately does not reset.
       - To do next time, on the bench: **continuity from the module's ANT pad/trace to the wire**,
         the module's **DATA→GPIO4/D2** joint, and its **VCC/GND** (the USB hookup may have
         disturbed them); check the antenna is not shorted to the module ground. Fallbacks: the
@@ -629,8 +629,12 @@ conclude the RXB6 is worse until (2) runs; a superhet RXB6 should out-hear the c
      `6e72b82a9f3ae1a050d8b9d81c199a83`).
    - ⚠️ **Security:** that historical sketch hardcodes the WiFi SSID **and password** in plaintext,
      and it is already in this public repo's git history — worth rotating the WiFi PSK at some point.
-   - Serial capture on macOS (`serialid.py` toggles DTR/RTS to force a boot banner; opening the
-     port alone does not reliably reset the board). `arduino-cli monitor` reads zero bytes here.
+   - Serial capture on macOS lives in `macos/`: `serialid.py PORT SECS` (toggles DTR/RTS to force
+     a boot banner and prints the result; opening the port alone does not reliably reset the
+     board), `serialcap.py PORT OUTFILE SECS` (streams the *running* firmware, no reset, flushes
+     every chunk), `serialreset.py PORT OUTFILE SECS` (resets **and** streams — use this one for
+     bench work: if the banner lands in the file, the reader is proven live and any later silence
+     is real RF silence). `arduino-cli monitor` reads zero bytes on these boards.
 5. Toolchain on the Mac (installed 2026-10-18): `arduino-cli` + `esp8266:esp8266` core 3.1.2.
    - compile: `arduino-cli compile --fqbn esp8266:esp8266:nodemcuv2 Arduino/RFreceiver_esp8266/`
    - USB flash — the **default** path (no UDP lottery, and the only option for v1):
