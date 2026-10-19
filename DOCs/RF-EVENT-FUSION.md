@@ -558,6 +558,41 @@ conclude the RXB6 is worse until (2) runs; a superhet RXB6 should out-hear the c
       it is not "fixed" accidentally by the fusion work.
 - [ ] `preprocess_rfxcom.sh` position-based parsing is brittle; the timestamp field is
       dropped today (fusion layer will consume it instead).
+- [ ] **OPEN (2026-10-19, hardware): the laundry antenna swap left `rx-55d68f` RF-deaf.**
+      The user replaced the laundry unit's antenna (suspecting the weak/corrupt decodes) and
+      reported that **part of the ANT trace came off the RF module when the old antenna was
+      removed** — i.e. the new wire may be making no electrical contact. Evidence:
+      - *Before* the swap (07:27–08:44, 30 presses): the laundry heard **25/30 (83 %)** of the
+        presses, including remotes the kitchen fridge cannot hear at all, with **1 corrupt decode
+        in ~26 receptions** (4 %) — better than the 2-in-5 seen the night before.
+      - *After* the swap (from the reconnect at log line 109151): **0 of 8 presses heard**, all
+        8 logged by `rf-central` alone (2 also by `rf-fridge`: the kitchen `4A0E9` remote).
+      - **Bench test (unit on USB at the Mac, 09:13–09:19):** the board is *alive* — boot banner
+        `Version: 2.2 … id: rx-55d68f`, Wi-Fi RSSI −44…−47, SNTP synced, `Socket connected
+        successfully!`, and it reconnected to `.77` twice (`connected`, log 109268/109276) — but
+        the serial shows **zero RF output** while remotes are pressed next to it, while `.77`
+        logs those same presses from `rf-central` alone. So the failure is the **RF input**, not
+        the network, the sketch or the server.
+      - **Capture path proven** (so this is real silence, not a dead reader): `serialreset.py`
+        (resets DTR/RTS then streams; `serialcap.py` streams without resetting) put the boot
+        banner in the capture file. Both scripts live in the session temp dir; `serialcap.py`
+        deliberately does not reset.
+      - To do next time, on the bench: **continuity from the module's ANT pad/trace to the wire**,
+        the module's **DATA→GPIO4/D2** joint, and its **VCC/GND** (the USB hookup may have
+        disturbed them); check the antenna is not shorted to the module ground. Fallbacks: the
+        **original coiled antenna** (restores a working reference) or a spare OOK module. Then
+        re-run the reset capture and press 5× next to it.
+      - Note the module still received *nothing* at point-blank range, which argues for
+        **DATA/power** rather than the antenna alone (an open ANT input usually still picks up
+        something up close).
+- [ ] **WATCH (2026-10-19): the laundry once delivered a message stamped 13.6 s in the past**
+      (`press start (recv=rf-laundry epoch=1792387691590 lag=13595ms)`, log 108932, 07:26),
+      followed 0.26 s later by its fresh copy and the central's. Fusion coped correctly — arrival-
+      time grouping merged all three views into one `n=3` group, `forwarded=1` — but a multi-second
+      transport stall (Wi-Fi re-association / TCP retransmit on a dead-but-open socket) means that
+      *if* the fresh copy were forwarded first and the stale copy arrived later, the stale copy
+      would open a **second** group outside the window and toggle a second time. Firmware-side fix
+      if it recurs: drop a message whose stamp is already more than a few seconds old.
 
 ## 8. How to resume this project in a future session
 1. This file: `DOCs/RF-EVENT-FUSION.md` (source of truth).
@@ -637,6 +672,10 @@ and never needs the manager restarted.
    receiver restarted per §8, and the pre-enable field test (§4 step 4) had already shown all five
    presses forwarded exactly once with `FUSED … n=2`/`n=3`. The legacy 2 s debounce code remains in
    place as the gate for any v1 event and as the one-line rollback.
+   **Production confirmation (2026-10-19):** 36 presses across two sessions (last night + this
+   morning) produced **36 FIFO writes — exactly one per press**, five `n=3` groups, **no split
+   groups and no double toggles**; every `FUSED` line read `forwarded=1`. The 914 ms spread that
+   forced `W` to 1500 ms would now need >1.5 s to split, and none did.
 4. Watch `lag` for a day — a receiver whose `lag` is huge or **negative** is not NTP-synced.
    Already seen once: on a real press (2026-10-18) the laundry unit logged
    `press start (recv=rf-laundry epoch=1792359674954 lag=-459ms)` — a negative lag means its SNTP
@@ -650,8 +689,13 @@ and never needs the manager restarted.
    measurement, never blindly.
    Related cosmetic noise: the `<rx-id> connected` hello is logged as `buttonID: INVALID` by the
    RFXCOM preprocessor (harmless, §4).
-5. Optional (still open from §5): straight 17.3 cm ¼-wave antenna on the fridge unit + a
-   co-located A/B against a nodeMCU, to settle RXB6 sensitivity properly.
+5. **Antenna work — in progress, hardware.** The laundry unit's antenna was swapped on
+   2026-10-19 and the unit is now on the bench (USB to the Mac) with a **silent RF input**
+   (§7): fix the ANT trace/joint (or restore the coiled antenna), then re-run the bench capture.
+   The laundry's *pre-swap* morning run gives the reference to beat: **25/30 presses heard,
+   1 corrupt decode in ~26 receptions**. Still open from §5: straight 17.3 cm ¼-wave antenna +
+   a co-located A/B against a nodeMCU, to settle RXB6 sensitivity properly (the fridge unit is
+   the right subject for that one).
 6. Optional: the ESP32/CC1101 route — add the LightwaveRF decode to `ESP32_RX_01`'s firmware
    (keeping KINETIC working) and get **RSSI** into the fusion record. The firmware source is
    **not in this repo** — it must be recovered from wherever it was written (the flashed binary

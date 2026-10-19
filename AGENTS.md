@@ -28,7 +28,14 @@
   twice. Verified before arming: five field presses, all forwarded exactly once, two of them the
   first `n=3` groups; `test_fusion.sh` now has a regression guard for that 914 ms case. The laundry
   unit's decode is the flakiest in the fleet (2 of those 5 presses arrived as corrupt codes →
-  `INVALID` → dropped server-side, no phantom press). The KINETIC receiver is **`ESP32_RX_01`** (ESP32 + CC1101/E07-M1101D,
+  `INVALID` → dropped server-side, no phantom press).
+  **Current fleet state (2026-10-19, later):** production confirmed **36/36 presses → one FIFO write
+  each** (five `n=3` groups, no split groups, no double toggles). The laundry unit's antenna was
+  then swapped and it is now **RF-deaf and sitting on the bench** (USB to the Mac; board alive —
+  banner/SNTP/socket/reconnects — but **zero RF output**, §7 of `DOCs/RF-EVENT-FUSION.md`), so the
+  live fleet is effectively **`rf-central` + `rf-fridge`**; fusion handles it (n=1/n=2 groups).
+  Pre-swap reference for the laundry: 25/30 presses heard, 1 corrupt decode in ~26 receptions.
+  The KINETIC receiver is **`ESP32_RX_01`** (ESP32 + CC1101/E07-M1101D,
   GDO0→GPIO13, `:5678`, RSSI) — its firmware source is **not in the repo** (wanted for the later
   "add LightwaveRF + RSSI" step) and it is currently powered off (`AB6EDE`/`CCFF0E` are dead until
   it is back). **Found & fixed a decode bug**: the ESP8266 refactor had truncated the LightwaveRF
