@@ -627,11 +627,13 @@ conclude the RXB6 is worse until (2) runs; a superhet RXB6 should out-hear the c
 
 ## 8. How to resume this project in a future session
 1. This file: `DOCs/RF-EVENT-FUSION.md` (source of truth).
-2. AGENTS.md has a short "Active Project" pointer.
-3. Ground truth commands:
+2. `Arduino/README.md` — the hardware/wire-protocol/pipeline map (fleet table, message
+   format, server file roles, build/flash/bench commands, troubleshooting table).
+3. AGENTS.md has a short "Active Project" pointer.
+4. Ground truth commands:
    - `ssh root@192.168.1.77 'tail -30 /root/Domotica/LinuxServerScripts/button2sONOFF/logs/buttonPressReceiver.sh.log'`
    - `ssh root@192.168.1.77 'ss -tlnp | grep -E ":1234\b|:5678\b"; screen -ls'`
-4. Firmware lives in `Arduino/RFreceiver_esp8266/` (**v2.2** = committed, flashed & verified on
+5. Firmware lives in `Arduino/RFreceiver_esp8266/` (**v2.2** = committed, flashed & verified on
    laundry + fridge); server in `LinuxServerScripts/button2sONOFF/buttonPressReceiver.sh`
    (+ `test_fusion.sh` for the fusion logic, `tools/rf-frame-check.py` to verify framing on `.77`).
    - **`rx-241002`** = D1 mini + RXB6, mapped to `rf-fridge` in `config/receivers.config`,
@@ -677,7 +679,7 @@ conclude the RXB6 is worse until (2) runs; a superhet RXB6 should out-hear the c
      silence is real, exit 1 = wedged ⇒ replug). Only ever run **one** reader: two concurrent
      readers split the tty stream and silently drop data — check `lsof /dev/cu.usbserial-*`
      (exactly one PID).
-5. Toolchain on the Mac (installed 2026-10-18): `arduino-cli` + `esp8266:esp8266` core 3.1.2.
+6. Toolchain on the Mac (installed 2026-10-18): `arduino-cli` + `esp8266:esp8266` core 3.1.2.
    - compile: `arduino-cli compile --fqbn esp8266:esp8266:nodemcuv2 Arduino/RFreceiver_esp8266/`
    - USB flash — the **default** path (no UDP lottery, and the only option for v1):
      `arduino-cli upload -p /dev/cu.usbserial-* --fqbn esp8266:esp8266:nodemcuv2 Arduino/RFreceiver_esp8266/`
@@ -706,8 +708,10 @@ and never needs the manager restarted.
 
 1. ✅ **DONE 2026-10-18 — the fridge unit `rx-241002` was USB-flashed to v2.2** (its OTA listener
    was wedged, §7 "OTA", so USB was the only path; no backup needed as v2.1 is reproducible from
-   this repo). ⚠️ Action for the physical world: the box is still **on the bench at the Mac** —
-   put it back in the kitchen with its RXB6 module attached.
+   this repo). ✅ Its box is **installed in the kitchen** (it was on the bench only while flashing):
+   today's bench presses (`4AA0D`, at the Mac) were heard by `rf-central` 6/6 and `rf-laundry` 6/6
+   but **not** by the fridge, while it does hear the kitchen `4A0E9` remote (last reception
+   2026-10-19 ~11:13) — which is what kitchen placement predicts.
 2. ✅ **DONE 2026-10-19 — `nodeMCU-0` = `rx-058ef5` / `rf-central` USB-flashed to v2.2**
    (`Hash of data verified`; banner `Version: 2.2 … id: rx-058ef5` matching the MAC prediction;
    compressed image md5 `f7783deb438efb63192e8271e7e3c799`, identical to the other two units).

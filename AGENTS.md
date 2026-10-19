@@ -72,7 +72,8 @@
   recipe in `DOCs/RF-EVENT-FUSION.md` §8. Note receivers reconnect **lazily on their next
   transmission**, so "no connections on `:1234`" after a restart is normal, not an outage.
 - **Read `DOCs/RF-EVENT-FUSION.md` first** — it is the source of truth (design, rollout plan,
-  open questions, fix list, resume commands).
+  open questions, fix list, resume commands). **Receiver hardware, wire protocol and the
+  server-side pipeline map: `Arduino/README.md`.**
 
 ## IoT Controller (house-map WEB UI) — `.77:3000`
 
