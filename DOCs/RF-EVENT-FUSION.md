@@ -724,13 +724,14 @@ and never needs the manager restarted.
    measurement, never blindly.
    Related cosmetic noise: the `<rx-id> connected` hello is logged as `buttonID: INVALID` by the
    RFXCOM preprocessor (harmless, §4).
-5. **Antenna work — in progress, hardware.** The laundry unit's antenna was swapped on
-   2026-10-19 and the unit is now on the bench (USB to the Mac) with a **silent RF input**
-   (§7): fix the ANT trace/joint (or restore the coiled antenna), then re-run the bench capture.
-   The laundry's *pre-swap* morning run gives the reference to beat: **25/30 presses heard,
-   1 corrupt decode in ~26 receptions**. Still open from §5: straight 17.3 cm ¼-wave antenna +
-   a co-located A/B against a nodeMCU, to settle RXB6 sensitivity properly (the fridge unit is
-   the right subject for that one).
+5. **Antenna work — the unit is back in service; the A/B benchmark is still open (hardware).**
+   The 2026-10-19 "silent RF input after the antenna swap" turned out to be a **broken 3.3 V feed
+   to the module** (§7) — *not* the antenna. Power restored ⇒ the unit decodes again and is
+   **reinstalled in the laundry room**, where a 6-press check gave **6/6 heard, 0 corrupt, 6 FIFO
+   writes** (22:07). The laundry's pre-swap morning run gives the reference to beat: **25/30 presses
+   heard, 1 corrupt decode in ~26 receptions**. Still open from §5: straight 17.3 cm ¼-wave antenna +
+   a co-located A/B against a nodeMCU, to settle RXB6 sensitivity properly (the fridge unit is the
+   right subject for that one).
 6. Optional: the ESP32/CC1101 route — add the LightwaveRF decode to `ESP32_RX_01`'s firmware
    (keeping KINETIC working) and get **RSSI** into the fusion record. The firmware source is
    **not in this repo** — it must be recovered from wherever it was written (the flashed binary
