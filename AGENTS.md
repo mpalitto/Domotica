@@ -30,11 +30,17 @@
   unit's decode is the flakiest in the fleet (2 of those 5 presses arrived as corrupt codes →
   `INVALID` → dropped server-side, no phantom press).
   **Current fleet state (2026-10-19, later):** production confirmed **36/36 presses → one FIFO write
-  each** (five `n=3` groups, no split groups, no double toggles). The laundry unit's antenna was
-  then swapped and it is now **RF-deaf and sitting on the bench** (USB to the Mac; board alive —
-  banner/SNTP/socket/reconnects — but **zero RF output**, §7 of `DOCs/RF-EVENT-FUSION.md`), so the
-  live fleet is effectively **`rf-central` + `rf-fridge`**; fusion handles it (n=1/n=2 groups).
-  Pre-swap reference for the laundry: 25/30 presses heard, 1 corrupt decode in ~26 receptions.
+  each** (five `n=3` groups, no split groups, no double toggles). Laundry `rx-55d68f` then went
+  silent and was believed **RF-deaf after an antenna swap** — that verdict was wrong: the real fault
+  was a **broken 3.3 V feed to the RF module** (unpowered module and a dead GPIO both look like RF
+  silence), found and repaired by the user on the bench ~21:45. Power restored ⇒ it decodes again
+  (serial `Decoded: F4AA0D0101` / `GOOD CODE … Confidence=1..6`; server-side it is the **first
+  hearer, 0 ms**, of each group) and the post-fix test gave **5 presses → 5 FIFO writes**, four
+  `n=2 forwarded=1` groups `via=rf-laundry@0ms,rf-central@80-236ms` plus one `rf-central`-only press.
+  The laundry still has to be **reinstalled in the laundry room**; pre-swap reference for it: 25/30
+  presses heard, 1 corrupt decode in ~26 receptions. **Watch:** once the module was powered its
+  decoder chatter went from *zero* to ≈1 `BAD CODE … Unknown byte value 0xFF` per second (wide-open
+  AGC / floating antenna) — no phantom events, but it can cost a weak press. See §7.
   The KINETIC receiver is **`ESP32_RX_01`** (ESP32 + CC1101/E07-M1101D,
   GDO0→GPIO13, `:5678`, RSSI) — its firmware source is **not in the repo** (wanted for the later
   "add LightwaveRF + RSSI" step) and it is currently powered off (`AB6EDE`/`CCFF0E` are dead until

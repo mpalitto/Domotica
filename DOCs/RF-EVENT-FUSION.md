@@ -558,7 +558,31 @@ conclude the RXB6 is worse until (2) runs; a superhet RXB6 should out-hear the c
       it is not "fixed" accidentally by the fusion work.
 - [ ] `preprocess_rfxcom.sh` position-based parsing is brittle; the timestamp field is
       dropped today (fusion layer will consume it instead).
-- [ ] **OPEN (2026-10-19, hardware): the laundry antenna swap left `rx-55d68f` RF-deaf.**
+- [x] **RESOLVED 2026-10-19 ~21:45 — the laundry's "RF-deaf after the antenna swap" was a broken
+      3.3 V FEED to the module, not the antenna.** The user found a faulty connection between the
+      nodeMCU's 3.3 V pin and the RF module and repaired it. With power restored the unit decoded
+      on the very next test: serial `Decoded: F4AA0D0101` + `GOOD CODE … Confidence=1..6` on every
+      press and 4× `Successfully sent:`; server-side `rf-laundry` is the **first hearer (0 ms)** of
+      each group it picks up, so 5 presses produced **5 FIFO writes** — four
+      `FUSED 4AA0D1RFXCOM n=2 forwarded=1 via=rf-laundry@0ms,rf-central@80-236ms` groups plus one
+      `rf-central`-only press (the one the laundry missed).
+      **Method note (reusable): an unpowered module and a dead GPIO both look exactly like RF
+      silence.** A serial reset capture only proves the *reader* is live — it cannot distinguish
+      "module silent" from "pin blind". Do the meter checks (module VCC↔GND, DATA idle level,
+      DATA→D2 continuity, D2↔GND resistance) **before** re-flashing anything; and note the failure
+      is invisible server-side if the unit is unmapped (it still prints HELLO + reconnects, so the
+      board looks perfectly healthy).
+      **New bench artifact to watch:** once the module had power, its decoder went from producing
+      *zero* output to a steady `[BAD CODE - Decoding failed]` / `ERROR: Unknown byte value 0xFF`
+      chatter, ≈1/s, `BAD CODE : 1200-1900 ms : Confidence=0`. Harmless today (dropped server-side,
+      no phantom events, real frames decode straight through it) but it is a wide-open-AGC /
+      floating-antenna signature and it can cost a weak press (it is the likeliest reason the 5th
+      press reached `rf-central` only). If it shows up in the field position: check the antenna wire
+      and fit a 100 nF cap across the module's VCC↔GND. A **pulse-activity counter in the 60 s
+      heartbeat** would have diagnosed this whole episode in one minute (see the v2.3 draft).
+      **Original report, kept for method:**
+- [ ] *(superseded by the item above — kept as the diagnosis record)* **OPEN (2026-10-19, hardware):
+      the laundry antenna swap left `rx-55d68f` RF-deaf.**
       The user replaced the laundry unit's antenna (suspecting the weak/corrupt decodes) and
       reported that **part of the ANT trace came off the RF module when the old antenna was
       removed** — i.e. the new wire may be making no electrical contact. Evidence:
