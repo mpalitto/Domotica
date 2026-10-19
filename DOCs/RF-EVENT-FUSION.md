@@ -666,6 +666,17 @@ conclude the RXB6 is worse until (2) runs; a superhet RXB6 should out-hear the c
      every chunk), `serialreset.py PORT OUTFILE SECS` (resets **and** streams — use this one for
      bench work: if the banner lands in the file, the reader is proven live and any later silence
      is real RF silence). `arduino-cli monitor` reads zero bytes on these boards.
+   - ⚠️ **A wedged macOS USB-serial driver looks exactly like a dead board** (hit 2026-10-19:
+     `serialreset.py` died with `termios.error: (22, 'Invalid argument')`, and even
+     `stty -f /dev/cu.usbserial-110 115200` failed). The device node still exists and `ioreg` still
+     lists the adapter, but the driver refuses **every** `tcsetattr`; the trigger is an
+     unplug/replug (or power cycle) *while a process still holds the port*. Software cannot clear
+     it — `IOSSIOSPEED` (`0x80045402`) returns `Device error` too. **Fix: physically unplug and
+     replug the USB cable** (and re-discover the port name: it can come back as `-110` or `-210`).
+     Diagnose *before* blaming the sketch: `python3 macos/serialdiag.py` (exit 0 = driver usable ⇒
+     silence is real, exit 1 = wedged ⇒ replug). Only ever run **one** reader: two concurrent
+     readers split the tty stream and silently drop data — check `lsof /dev/cu.usbserial-*`
+     (exactly one PID).
 5. Toolchain on the Mac (installed 2026-10-18): `arduino-cli` + `esp8266:esp8266` core 3.1.2.
    - compile: `arduino-cli compile --fqbn esp8266:esp8266:nodemcuv2 Arduino/RFreceiver_esp8266/`
    - USB flash — the **default** path (no UDP lottery, and the only option for v1):

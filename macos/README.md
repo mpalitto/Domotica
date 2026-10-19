@@ -54,6 +54,7 @@ The new `button2sONOFF/` system tries WiFi first (`eWeLink Proxy`), falls back t
 | `serialid.py` | Reset an ESP8266 RF receiver over USB (DTR/RTS toggle) and print its boot banner — the way to identify *which* unit is plugged in |
 | `serialcap.py` | Stream a running receiver's serial output to a file (no reset, flushed) — see press decodes live |
 | `serialreset.py` | Reset **and** stream: if the boot banner lands in the file the reader is proven live, so any later silence is real RF silence (bench work) |
+| `serialdiag.py` | Check whether the macOS USB-serial **driver** still accepts settings (exit 0 = usable, 1 = wedged ⇒ physically replug the USB). A wedged driver looks exactly like a dead board |
 
 All scripts resolve their siblings relative to their own location, so this
 directory can be checked out anywhere.
