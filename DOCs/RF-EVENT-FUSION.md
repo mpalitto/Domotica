@@ -580,6 +580,13 @@ conclude the RXB6 is worse until (2) runs; a superhet RXB6 should out-hear the c
       press reached `rf-central` only). If it shows up in the field position: check the antenna wire
       and fit a 100 nF cap across the module's VCC↔GND. A **pulse-activity counter in the 60 s
       heartbeat** would have diagnosed this whole episode in one minute (see the v2.3 draft).
+      **Field re-install verified (2026-10-19 ~22:07):** 6 presses, the laundry heard **6/6 with 0
+      corrupt** and `rf-central` 6/6 → **6 FIFO writes**, one per press (five `FUSED … n=2
+      forwarded=1` pairs at read time, the 6th group still open — normal, `FUSED` prints on group
+      close). Laundry `skew` 26–119 ms (one 952 ms repeat-lock late), `lag` 75–172 ms, and it was
+      the *first* hearer in 2 of the 6. **0 `INVALID` in the delta ⇒ the `BAD CODE` chatter is a
+      bench artifact** (wide-open AGC next to the Mac), not a field fault — no cap needed unless it
+      reappears. Better than the pre-swap baseline (25/30 heard, 1 corrupt in ~26).
       **Original report, kept for method:**
 - [ ] *(superseded by the item above — kept as the diagnosis record)* **OPEN (2026-10-19, hardware):
       the laundry antenna swap left `rx-55d68f` RF-deaf.**
