@@ -33,6 +33,9 @@ LinuxServerScripts/tmp-files/*
 *.crt
 *.p12
 
+# Runtime device identities (contain real cloud apikeys — never commit)
+eWeLink-Proxy/nodejs/core/devices.json
+
 # OS files
 .DS_Store
 Thumbs.db
