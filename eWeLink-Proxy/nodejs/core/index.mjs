@@ -1,5 +1,5 @@
 import events from './events.mjs';
-import { loadAliases, saveAliases, sONOFF } from './storage.mjs';
+import { loadAliases, saveAliases, loadDeviceIdentities, sONOFF } from './storage.mjs';
 import { CONFIG } from './config.mjs';
 import { loadPlugins } from './plugins.mjs';
 import { startDeviceMonitor } from './device-monitor.mjs';
@@ -14,6 +14,10 @@ import { createApiHandler } from './api.mjs';
   console.log('===========================================\n');
 
   await loadAliases();
+  // Restore the per-device cloud identity (real apikey/model/romVersion) so the
+  // cloud bridge can impersonate RF-fallback devices even before/without them
+  // connecting locally.
+  await loadDeviceIdentities();
 
   // Load all plugins (they will subscribe to events)
   await loadPlugins(events, sONOFF, CONFIG);

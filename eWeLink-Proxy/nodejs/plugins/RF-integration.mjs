@@ -53,6 +53,12 @@ export default {
 	  if (device.online) {
 	    sendToTcp(`CONNECTED ${deviceID}`);
 	    console.log(`[EVENT SENDER] CONNECTED ${deviceID}`);
+	  } else {
+	    // Explicitly mark offline devices so managerLayer does not keep a stale
+	    // "connected" flag across a proxy restart (otherwise it tries WiFi first
+	    // and wastes a round-trip before falling back to RF).
+	    sendToTcp(`DISCONNECTED ${deviceID}`);
+	    console.log(`[EVENT SENDER] DISCONNECTED ${deviceID}`);
 	  }
 	  const sw = device.params?.switch === 'on' ? 'ON'
 	           : device.params?.switch === 'off' ? 'OFF' : null;

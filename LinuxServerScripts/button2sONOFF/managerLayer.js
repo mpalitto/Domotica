@@ -109,6 +109,50 @@ async function syncDevice(alias, desired) {
 }
 
 
+/*
+ * Cloud-originated command (Alexa / eWeLink app) for a device whose WiFi is
+ * down. The proxy has already impersonated the device towards the cloud and
+ * knows the desired state, so we apply it: WiFi first, RF fallback. Anything
+ * we send is echoed back to the proxy as a STATE_UPDATE so the cloud stays in
+ * sync (broadcastStateToProxy / broadcastStateToWebUI).
+ */
+async function fallbackToRf(alias, desired) {
+  desired = (desired || '').toUpperCase();
+  if (desired !== 'ON' && desired !== 'OFF') {
+    console.log(`WARNING: RF_TOGGLE for ${alias} with invalid state "${desired}" – ignored`);
+    return;
+  }
+  const devID = deviceID[alias];
+  if (!devID) {
+    console.log(`WARNING: RF_TOGGLE for unknown alias "${alias}" – ignored`);
+    return;
+  }
+  if (deviceState[alias] === desired) {
+    console.log(`${alias} already ${desired} – re-asserting anyway`);
+  }
+
+  console.log(`cloud toggle ${alias} → ${desired} (wifi=${deviceConnected[alias]})`);
+
+  if (deviceConnected[alias] === 'yes') {
+    try {
+      await sendWifiSet(devID, desired);
+      deviceState[alias] = desired;
+      return;
+    } catch {
+      console.log('WiFi failed, falling back to RF');
+    }
+  }
+
+  if (deviceRfCode[alias]) {
+    sendRfToggle(deviceRfCode[alias]);
+    deviceState[alias] = desired;
+    broadcastStateToProxy(devID, desired);
+    broadcastStateToWebUI(deviceRfCode[alias], desired);
+  } else {
+    console.log(`WARNING: no RF code for ${alias} – cannot apply cloud command`);
+  }
+}
+
 function broadcastStateToProxy(devID, state) {
   if (!devID) return;
   const msg = `STATE_UPDATE ${devID} ${state}
@@ -248,6 +292,12 @@ function startEventServer() {
           // the change in the UI. Reports coming from the proxy itself are not
           // relayed back (that would just bounce).
           if (isLocalWebUI(socket)) broadcastStateToProxy(devID, value);
+          break;
+        case 'RF_TOGGLE':
+          // Cloud-originated command for a device whose WiFi is down (Alexa /
+          // eWeLink app → proxy → here). fallbackToRf reuses the normal
+          // WiFi-first / RF-fallback path.
+          fallbackToRf(alias, value);
           break;
         case 'CONNECTED':
           deviceConnected[alias] = 'yes';

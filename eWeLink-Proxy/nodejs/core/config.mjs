@@ -9,7 +9,8 @@ export const CONFIG = {
   modernWsPort: 8082,
   apiPort: 3000,
   localApiKey: '941c6e45-1111-4660-aa88-c9bd422f909d',
-  aliasesFile: './core/aliases.json'
+  aliasesFile: './core/aliases.json',
+  devicesFile: './core/devices.json'
 };
 
 export const tlsOptions = {
