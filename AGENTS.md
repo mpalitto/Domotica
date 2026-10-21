@@ -44,9 +44,10 @@
   **not** follow it into the field (0 `INVALID` in the delta), so it was a bench artifact. Pre-swap
   reference for it: 25/30 presses heard, 1 corrupt decode in ~26 receptions. See §7.
   The KINETIC receiver is **`ESP32_RX_01`** (ESP32 + CC1101/E07-M1101D,
-  GDO0→GPIO13, `:5678`, RSSI) — its firmware source is **not in the repo** (wanted for the later
-  "add LightwaveRF + RSSI" step) and it is currently powered off (`AB6EDE`/`CCFF0E` are dead until
-  it is back). **Found & fixed a decode bug**: the ESP8266 refactor had truncated the LightwaveRF
+  GDO0→GPIO13, `:5678`, RSSI) — its firmware source is in a separate repo
+  ([`mpalitto/ESP32-CC1101-KineticRX`](https://github.com/mpalitto/ESP32-CC1101-KineticRX)), wanted
+  for the later "add LightwaveRF + RSSI" step — and it is currently powered off (`AB6EDE`/`CCFF0E`
+  are dead until it is back). **Found & fixed a decode bug**: the ESP8266 refactor had truncated the LightwaveRF
   code to `F4AA0D-`, read by the server as `INVALID` and dropped; the original algorithm (only
   surviving in `notMantained/YUN-LWRF-receiver-v0.2`) was restored in `decodePulseData()` — **do
   not refactor that function again**.
@@ -184,5 +185,34 @@
 - Each device gets a cloud WebSocket connection to an AWS server (eu-disp.coolkit.cc).
 - On WS close or dispatch failure, reconnects with exponential backoff: 5s → 10s → 20s → 40s → 60s (max 5 attempts).
 - Retry counter resets on successful registration.
-- On `device:disconnected`, pending reconnect is cancelled.
 - `PLUGIN_FILE` in `nodejs/UI.sh` must point to `./nodejs/plugins/cloud-bridge.mjs` (relative to the service `WorkingDirectory`).
+
+### Ghost cloud bridge — Alexa control of RF-fallback lights (Oct 2026)
+
+- **Goal**: when a SONOFF's WiFi dies, the proxy must keep impersonating it
+  towards eWeLink AWS so Alexa/app commands still arrive; the proxy then asks
+  `.77` to fire the RF toggle. Full design + live verification:
+  **`DOCs/GHOST-CLOUD-BRIDGE.md`**.
+- The cloud link is now **decoupled from the local WiFi link**: on
+  `device:disconnected` the cloud WS is **kept** (not closed), and cloud
+  commands are served over RF when the device's local WS is down. (The old
+  behaviour — close the cloud link on `device:disconnected` — is gone; do not
+  reintroduce it.)
+- **Identity persistence**: the device's real cloud apikey/model/romVersion are
+  written to `eWeLink-Proxy/nodejs/core/devices.json` when first learned
+  (`core/storage.mjs`), and **gitignored** (real apikeys). Loaded at startup so
+  ghost links can be bootstrapped without the device being present — this is
+  what makes a proxy restart while a device is offline non-disruptive.
+- **Command path**: cloud command + device offline ⇒ proxy sends
+  `RF_TOGGLE <deviceID> <ON|OFF>` on its `:7777` link to managerLayer, then sends
+  the sequenced ack (stops Alexa's "device not responding"). managerLayer's
+  `fallbackToRf()` tries WiFi first, then RF, and echoes
+  `STATE_UPDATE <deviceID> <state>` back → proxy → cloud syncs.
+- **Scope**: proxy opens ghost links for *all* devices with a persisted
+  identity; managerLayer decides if an RF code exists and no-ops otherwise.
+  Accepted trade-off: the app/Alexa show the device online while its WiFi is
+  down (the proxy's `/devices` still reports `localOnline:false`).
+- `RF-integration.mjs` now also sends `DISCONNECTED` on (re)connect for devices
+  that are not locally online, so managerLayer does not keep a stale
+  `deviceConnected=yes` across a proxy restart (which caused a wasted WiFi
+  attempt before the RF fallback).

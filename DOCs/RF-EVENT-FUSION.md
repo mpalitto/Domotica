@@ -748,9 +748,9 @@ and never needs the manager restarted.
    a co-located A/B against a nodeMCU, to settle RXB6 sensitivity properly (the fridge unit is the
    right subject for that one).
 6. Optional: the ESP32/CC1101 route — add the LightwaveRF decode to `ESP32_RX_01`'s firmware
-   (keeping KINETIC working) and get **RSSI** into the fusion record. The firmware source is
-   **not in this repo** — it must be recovered from wherever it was written (the flashed binary
-   can only be dumped, not decompiled to source).
+   (keeping KINETIC working) and get **RSSI** into the fusion record. The firmware source was
+   recovered and now lives in its own repo:
+   [`mpalitto/ESP32-CC1101-KineticRX`](https://github.com/mpalitto/ESP32-CC1101-KineticRX).
 7. Optional: `identify.sh` (bidirectional `socat` wrapper) — the firmware half already exists.
    Also **re-power the ESP32 KINETIC (`.212`)**: while it is off, KINETIC remotes `AB6EDE`
    (master-bath switch) and `CCFF0E` (Nicolò-bath switch) are dead.

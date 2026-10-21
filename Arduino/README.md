@@ -31,9 +31,12 @@ README.md                deep protocol/hardware documentation
 
 > **The receiver firmware source is the only firmware source in this repo.**
 > The KINETIC wall-switch receiver (`ESP32_RX_01`, an ESP32 + CC1101/E07-M1101D
-> board on port `5678`) speaks the same server protocol but its firmware is
-> **not** here — it was never committed, and while that unit is powered off the
-> KINETIC remotes (`AB6EDE` master bath, `CCFF0E` Nicolò bath) are dead.
+> board on port `5678`) speaks the same server protocol but its firmware lives
+> in its own repo:
+> [`mpalitto/ESP32-CC1101-KineticRX`](https://github.com/mpalitto/ESP32-CC1101-KineticRX).
+> It works, but the unit is currently powered off (KINETIC remotes `AB6EDE`
+> master bath, `CCFF0E` Nicolò bath are dead while it is off) — dormant, not
+> retired; KINETIC buttons may come back.
 
 ---
 
@@ -49,7 +52,7 @@ chip id.
 | `rf-central` | `rx-058ef5` | nodeMCU (was `nodeMCU-0`) | corridor / hallway | Hears nearly every remote — the "everything" receiver. v2.2 since 2026-10-19 (USB — v1 had no OTA). |
 | `rf-fridge` | `rx-241002` | D1 mini + RXB6 | kitchen, by the refrigerator | v2.2 since 2026-10-18. |
 | `rf-laundry` | `rx-55d68f` | nodeMCU (was `nodeMCU-1`) | laundry | v2.2 since 2026-10-18. |
-| `ESP32_RX_01` | — | ESP32 + CC1101 | (KINETIC receiver, port `5678`) | Firmware source not in this repo. |
+| `ESP32_RX_01` | — | ESP32 + CC1101 | (KINETIC receiver, port `5678`) | Powered off for now. Firmware: [`ESP32-CC1101-KineticRX`](https://github.com/mpalitto/ESP32-CC1101-KineticRX) (separate repo). |
 
 - **`rx-XXXXXX` = `ESP.getChipId()` = the low 24 bits of the MAC.** It is
   immutable and impossible to spoof by reflashing, which is why friendly names
