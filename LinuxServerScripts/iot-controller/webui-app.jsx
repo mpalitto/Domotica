@@ -1,5 +1,12 @@
         const { useState, useEffect, useRef } = React;
 
+        // Size of a light icon on the room canvas, in px. Keep in sync with the
+        // .light-bulb / .light-circle rules in index.html.
+        const LIGHT_ICON = 100;
+        // Negative margin used to centre the icon on its stored x/y anchor:
+        // half of the growth over the original 50px box.
+        const LIGHT_INSET = 25;
+
         // API Service
         const API = {
             async loadConfig() {
@@ -433,14 +440,25 @@
                     const wrapper = wrapperRef.current;
                     const canvas = canvasRef.current;
                     
-                    // Get all items bounds
+                    // Get all items bounds. Furniture carries its own size; light
+                    // icons have none in the model - their box is fixed at
+                    // LIGHT_ICON px and centred on the anchor point (the CSS
+                    // applies a negative margin of LIGHT_INSET to do the
+                    // centring), so the bounds must follow the same geometry.
                     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-                    
-                    [...furniture, ...lights].forEach(item => {
+
+                    furniture.forEach(item => {
                         minX = Math.min(minX, item.x);
                         minY = Math.min(minY, item.y);
                         maxX = Math.max(maxX, item.x + (item.width || 50));
                         maxY = Math.max(maxY, item.y + (item.height || 50));
+                    });
+
+                    lights.forEach(item => {
+                        minX = Math.min(minX, item.x - LIGHT_INSET);
+                        minY = Math.min(minY, item.y - LIGHT_INSET);
+                        maxX = Math.max(maxX, item.x - LIGHT_INSET + LIGHT_ICON);
+                        maxY = Math.max(maxY, item.y - LIGHT_INSET + LIGHT_ICON);
                     });
 
                     if (minX === Infinity) {

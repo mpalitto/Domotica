@@ -788,6 +788,8 @@ var _React = React,
   useState = _React.useState,
   useEffect = _React.useEffect,
   useRef = _React.useRef;
+var LIGHT_ICON = 100;
+var LIGHT_INSET = 25;
 var API = {
   loadConfig: function loadConfig() {
     return _asyncToGenerator(_regenerator().m(function _callee() {
@@ -1366,11 +1368,17 @@ function RoomEditor(_ref5) {
         minY = Infinity,
         maxX = -Infinity,
         maxY = -Infinity;
-      [].concat(_toConsumableArray(furniture), _toConsumableArray(lights)).forEach(function (item) {
+      furniture.forEach(function (item) {
         minX = Math.min(minX, item.x);
         minY = Math.min(minY, item.y);
         maxX = Math.max(maxX, item.x + (item.width || 50));
         maxY = Math.max(maxY, item.y + (item.height || 50));
+      });
+      lights.forEach(function (item) {
+        minX = Math.min(minX, item.x - LIGHT_INSET);
+        minY = Math.min(minY, item.y - LIGHT_INSET);
+        maxX = Math.max(maxX, item.x - LIGHT_INSET + LIGHT_ICON);
+        maxY = Math.max(maxY, item.y - LIGHT_INSET + LIGHT_ICON);
       });
       if (minX === Infinity) {
         minX = 0;
