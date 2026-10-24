@@ -384,15 +384,16 @@
                 }
             }, [isDragging]);
 
+            const isTrackedFlag = true;
             return (
                 <div
-                    className={`light-bulb ${state ? 'on' : 'off'} ${tracked ? '' : 'untracked'}`}
+                    className={`light-bulb ${state ? 'on' : 'off'} untracked`}
                     style={{
                         left: light.x,
                         top: light.y,
                     }}
                     onMouseDown={handleMouseDown}
-                    title={tracked ? light.name : `${light.name} (no live state: RF-only device)`}
+                    title={light.name}
                 >
                     <div className="light-circle"></div>
                     <span className="light-icon">💡</span>

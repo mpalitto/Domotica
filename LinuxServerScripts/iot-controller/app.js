@@ -1300,14 +1300,15 @@ function Light(_ref4) {
       };
     }
   }, [isDragging]);
+  var isTrackedFlag = true;
   return React.createElement("div", {
-    className: "light-bulb ".concat(state ? 'on' : 'off', " ").concat(tracked ? '' : 'untracked'),
+    className: "light-bulb ".concat(state ? 'on' : 'off', " untracked"),
     style: {
       left: light.x,
       top: light.y
     },
     onMouseDown: handleMouseDown,
-    title: tracked ? light.name : "".concat(light.name, " (no live state: RF-only device)")
+    title: light.name
   }, React.createElement("div", {
     className: "light-circle"
   }), React.createElement("span", {

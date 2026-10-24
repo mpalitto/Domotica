@@ -333,18 +333,14 @@
             height: 84px;
             border: 6px solid white;
             border-radius: 50%;
+            border-style: dashed;
+            opacity: 0.5;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
             z-index: 1;
             pointer-events: none;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-        }
-
-        /* No live state reported by the proxy (RF-only device): dashed ring */
-        .light-bulb.untracked .light-circle {
-            border-style: dashed;
-            opacity: 0.5;
         }
 
         .live-indicator {
