@@ -1239,6 +1239,28 @@ function Room(_ref3) {
     onMouseDown: handleResizeStart
   }));
 }
+var G_CODE_LABELS = {
+  'G1': 'CORRIDOIO',
+  'G2': 'CORRIDOIO',
+  'G3': 'CORRIDOIO',
+  'G4': 'CORRIDOIO',
+  'G1G2G3G4': 'CORRIDOIO',
+  'G5': 'ISOLA',
+  'G6': 'DIVANO',
+  'G7': 'TV',
+  'G8': 'PIANO',
+  'G9': 'LAVANDINO',
+  'G10': 'COLONNA',
+  'G11': 'CUCINA',
+  'G12': 'FORNO'
+};
+function getLightLabel(name) {
+  if (!name) return '';
+  var part = name.split('-')[0];
+  if (G_CODE_LABELS[part]) return G_CODE_LABELS[part];
+  if (/^G\d+$/.test(part) && G_CODE_LABELS[part]) return G_CODE_LABELS[part];
+  return part;
+}
 function Light(_ref4) {
   var light = _ref4.light,
     state = _ref4.state,
@@ -1319,7 +1341,7 @@ function Light(_ref4) {
     title: "Remove light"
   }, "\xD7"), React.createElement("div", {
     className: "light-label"
-  }, light.name.split('-')[0]));
+  }, getLightLabel(light.name)));
 }
 function RoomEditor(_ref5) {
   var room = _ref5.room,

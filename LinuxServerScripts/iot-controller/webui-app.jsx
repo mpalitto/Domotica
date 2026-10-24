@@ -333,6 +333,29 @@
             );
         }
 
+        // Map G-codes to friendlier labels
+        const G_CODE_LABELS = {
+            'G1': 'CORRIDOIO', 'G2': 'CORRIDOIO', 'G3': 'CORRIDOIO', 'G4': 'CORRIDOIO',
+            'G1G2G3G4': 'CORRIDOIO',
+            'G5': 'ISOLA',
+            'G6': 'DIVANO',
+            'G7': 'TV',
+            'G8': 'PIANO',
+            'G9': 'LAVANDINO',
+            'G10': 'COLONNA',
+            'G11': 'CUCINA',
+            'G12': 'FORNO'
+        };
+
+        function getLightLabel(name) {
+            if (!name) return '';
+            const part = name.split('-')[0];
+            if (G_CODE_LABELS[part]) return G_CODE_LABELS[part];
+            // If it's just G<number>, try to look up
+            if (/^G\d+$/.test(part) && G_CODE_LABELS[part]) return G_CODE_LABELS[part];
+            return part;
+        }
+
         // Light component
         function Light({ light, state, tracked, onToggle, onPositionChange, onRemove, editMode }) {
             const [isDragging, setIsDragging] = useState(false);
@@ -406,7 +429,7 @@
                             ×
                         </button>
                     )}
-                    <div className="light-label">{light.name.split('-')[0]}</div>
+                    <div className="light-label">{getLightLabel(light.name)}</div>
                 </div>
             );
         }
