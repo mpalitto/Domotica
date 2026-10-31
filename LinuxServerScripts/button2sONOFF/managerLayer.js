@@ -29,11 +29,6 @@ const ARDUINO_SCREEN_NAME = 'arduino433tx';
 const buttonState = Object.create(null);       // buttonID -> ON/OFF
 const buttonDevices = Object.create(null);     // buttonID -> [alias...]
 const deviceState = Object.create(null);       // alias -> ON/OFF
-// When we send a command, remember the time. A STATE_UPDATE that arrives
-// inside STATE_SETTLE_MS for that alias is a mid-switch reading (the relay
-// hasn't flipped yet) and must not override our optimistic state.
-const STATE_SETTLE_MS = 500;
-const lastCommandTime = Object.create(null);   // alias -> ms of last command
 const deviceConnected = Object.create(null);   // alias -> yes/no
 const deviceRfCode = Object.create(null);      // alias -> rfCODE
 const deviceAlias = Object.create(null);       // deviceID -> alias
@@ -96,8 +91,8 @@ async function syncDevice(alias, desired) {
     try {
       console.log(`send_wifi_set ${devID} ${desired}`);
       await sendWifiSet(devID, desired);
-      deviceState[alias] = desired;   // authoritative key is alias, not devID
-      lastCommandTime[alias] = Date.now();
+      // Do NOT store state here: for a WiFi-connected device the device's own
+      // STATE_UPDATE is the source of truth and updates deviceState[alias].
       return;
     } catch {
       console.log('WiFi failed, falling back to RF');
@@ -106,8 +101,9 @@ async function syncDevice(alias, desired) {
 
   if (deviceRfCode[alias]) {
     sendRfToggle(deviceRfCode[alias]);
+    // RF has no reliable device feedback: the device never reports back, so we
+    // must record the state ourselves (unlike the WiFi path above).
     deviceState[alias] = desired;
-    lastCommandTime[alias] = Date.now();
     if (devID) {
       broadcastStateToProxy(devID, desired);
     }
@@ -292,16 +288,7 @@ function startEventServer() {
 
       switch (type) {
         case 'STATE_UPDATE': {
-          // Principle: the device's actual reported state is the source of truth,
-          // so we store it. But a reading that arrives < STATE_SETTLE_MS after we
-          // commanded this device is a mid-switch value (relay not yet flipped) and
-          // would corrupt state — defer to our last command during that window and
-          // trust the device afterwards.
-          const cmdAt = lastCommandTime[alias];
-          if (cmdAt && Date.now() - cmdAt < STATE_SETTLE_MS && value !== deviceState[alias]) {
-            console.log(`[STATE_UPDATE] ignoring mid-switch reading for ${alias} (last sent ${deviceState[alias]} ${Date.now() - cmdAt}ms ago)`);
-            break;
-          }
+          // The device's actual reported state is the source of truth: store it.
           deviceState[alias] = value;
           // A STATE_UPDATE posted by the local web UI is a state correction
           // (CORREGGI mode / web toggle of an RF-fallback light): relay it to
