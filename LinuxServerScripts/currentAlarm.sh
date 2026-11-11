@@ -63,7 +63,7 @@ function alexaStart {
     restore=""
     if [ -e "$flag" ]; then
       prev=$(alexaGetVolume)
-      if [ -n "$prev" ] && [ "$prev" -lt $((ALEXA_LEVEL * 10)) ]; then
+      if [ -e "$flag" ] && [ -n "$prev" ] && [ "$prev" -lt $((ALEXA_LEVEL * 10)) ]; then
         echo "$(date '+%F %T') volume $prev -> $((ALEXA_LEVEL * 10)) for the alarm" >>"$alexaLog"
         alexaSetLevel "$ALEXA_LEVEL"
         restore="$prev"
