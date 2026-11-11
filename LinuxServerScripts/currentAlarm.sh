@@ -20,21 +20,38 @@ ALEXA_DEVICE="${ALEXA_ALARM_DEVICE:-living}"
 ALEXA_TEXT="${ALEXA_ALARM_TEXT:-Daniela, Daniela, Daniela! Alarm, Alarm, Alarm!!!}"
 ALEXA_PAUSE="${ALEXA_ALARM_PAUSE:-5}"       # secondi tra due ripetizioni
 ALEXA_TIMEOUT="${ALEXA_ALARM_TIMEOUT:-20}"  # timeout della singola chiamata
+ALEXA_LEVEL="${ALEXA_ALARM_LEVEL:-9}"       # volume 0-10 durante l'allarme
 alexaLog="$IoTserverScripts/.alarm_alexa.log"
 alexaSeq=0
 alexaFlag=""
 alexaPid=""
 
+# esegue un comando nel container CT106 passando da pve (.33)
+function alexaRemote {
+  timeout "$ALEXA_TIMEOUT" ssh -o BatchMode=yes -o ConnectTimeout=5 root@192.168.1.33 "$1"
+}
+
 function alexaSpeak {
-  if ! timeout "$ALEXA_TIMEOUT" ssh -o BatchMode=yes -o ConnectTimeout=5 root@192.168.1.33 \
-       "pct exec 106 -- /usr/local/bin/alexacli speak \"$ALEXA_TEXT\" -d \"$ALEXA_DEVICE\"" >>"$alexaLog" 2>&1; then
+  if ! alexaRemote "pct exec 106 -- /usr/local/bin/alexacli speak \"$ALEXA_TEXT\" -d \"$ALEXA_DEVICE\"" >>"$alexaLog" 2>&1; then
     echo "$(date '+%F %T') Alexa speak FAILED (device=$ALEXA_DEVICE)" >>"$alexaLog"
   fi
 }
 
-# ripete la frase ogni ALEXA_PAUSE secondi finche' il file flag esiste.
+# volume attuale in percentuale (0-100), vuoto se non disponibile
+function alexaGetVolume {
+  alexaRemote "pct exec 106 -- /usr/local/bin/alexa-volume \"$ALEXA_DEVICE\" --level" 2>/dev/null | tr -dc '0-9'
+}
+
+# imposta il volume: $1 = livello 0-10 (la scala dei comandi vocali)
+function alexaSetLevel {
+  alexaRemote "pct exec 106 -- /usr/local/bin/alexacli command \"volume $1\" -d \"$ALEXA_DEVICE\"" >>"$alexaLog" 2>&1
+}
+
+# Alza il volume, ripete la frase ogni ALEXA_PAUSE secondi finche' il file flag
+# esiste, poi rimette il volume di prima.
 # Lo stop NON uccide la ripetizione in corso: la frase viene finita di dire
-# (altrimenti un rientro rapido dell'allarme tronca l'annuncio a meta').
+# (altrimenti un rientro rapido dell'allarme tronca l'annuncio a meta') ed e'
+# il loop stesso a ripristinare il volume quando esce.
 function alexaStart {
   [ -n "$ALEXA_TEXT" ] || return
   alexaStop
@@ -43,11 +60,26 @@ function alexaStart {
   touch "$alexaFlag"
   (
     flag="$alexaFlag"
+    restore=""
+    if [ -e "$flag" ]; then
+      prev=$(alexaGetVolume)
+      if [ -n "$prev" ] && [ "$prev" -lt $((ALEXA_LEVEL * 10)) ]; then
+        echo "$(date '+%F %T') volume $prev -> $((ALEXA_LEVEL * 10)) for the alarm" >>"$alexaLog"
+        alexaSetLevel "$ALEXA_LEVEL"
+        restore="$prev"
+        sleep 2   # lascia applicare il volume prima del primo annuncio
+      fi
+    fi
     while [ -e "$flag" ]; do
       echo "$(date '+%F %T') alarm on -> Alexa($ALEXA_DEVICE)" >>"$alexaLog"
       alexaSpeak
       sleep "$ALEXA_PAUSE"
     done
+    # ripristina solo se nel frattempo non e' partito un altro allarme
+    if [ -n "$restore" ] && ! ls /tmp/currentAlarm.alexa.$$.* >/dev/null 2>&1; then
+      alexaSetLevel $(( (restore + 5) / 10 ))
+      echo "$(date '+%F %T') volume restored to $restore" >>"$alexaLog"
+    fi
   ) &
   alexaPid=$!
 }

@@ -10,6 +10,7 @@ Usage:
     alexa-volume                  # table of every device that reports a volume
     alexa-volume living           # only that device (name or serial)
     alexa-volume living --set 4   # set it (Alexa's 0-10 scale), then re-read
+    alexa-volume living --level   # print just the percent (e.g. 30), for scripts
     alexa-volume --json           # machine-readable
 
 Note the two scales: the API reports speakerVolume 0-100 (percent), while
@@ -126,6 +127,7 @@ def set_volume(device, level):
 def main(argv):
     want_json = "--json" in argv
     set_to = None
+    want_level = "--level" in argv
     args = []
     it = iter(argv)
     for a in it:
@@ -133,7 +135,7 @@ def main(argv):
             try:
                 set_to = int(next(it))
             except (StopIteration, ValueError):
-                print("--set needs a number 0-100", file=sys.stderr)
+                print("--set needs a number 0-10", file=sys.stderr)
                 return 2
         elif a.startswith("--set="):
             set_to = int(a.split("=", 1)[1])
@@ -172,6 +174,13 @@ def main(argv):
 
     if want_json:
         print(json.dumps({"data": rows, "success": True}, indent=2))
+        return 0
+
+    if want_level:
+        if not rows or rows[0]["volume"] is None:
+            print(f"no volume reported for: {args[0] if args else '?'}", file=sys.stderr)
+            return 2
+        print(int(rows[0]["volume"]))
         return 0
 
     for r in rows:
