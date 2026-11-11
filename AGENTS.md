@@ -97,6 +97,10 @@
   - `root@192.168.1.11` — eWeLink proxy host
   - `root@192.168.1.33` — Proxmox host (`pve`)
   - `root@192.168.1.1` — router LXC (`MAIN-router`)
+- **This Mac is `192.168.1.235`** on `en0` — DHCP lease from the LXC dnsmasq
+  (hostname `Mac`, MAC `6e:09:5c:3b:ad:5c`), so it can change on renewal; it is
+  **not** `.11`, which is the eWeLink proxy host. The Mac's LAN IP appears in
+  `netdiag.sh`/`watchdog.sh` output only as a client, never as a target.
 - **`.77` → `.33` is a hop that exists only for the Alexa alarm**: `.77`'s key
   (`root@orangepione`) is in `.33`'s `authorized_keys` (with `restrict`) and
   `.33`'s host key is in `.77`'s `known_hosts`. Both were added in Nov 2026 for
