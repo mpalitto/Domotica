@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Audio test — IoT wall panel</title>
+<style>
+    body {
+        font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+        background: #14181c; color: #e8eef2; margin: 0; padding: 18px;
+        -webkit-text-size-adjust: 100%;
+    }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    p.sub { color: #8fa3b0; font-size: 13px; margin: 0 0 18px; line-height: 1.5; }
+    .row { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; }
+    button {
+        font-size: 18px; padding: 18px 22px; border-radius: 12px; border: 0;
+        background: #2d7dd2; color: #fff; -webkit-appearance: none; flex: 1 1 40%;
+        min-height: 64px;
+    }
+    button.alt { background: #3b4652; }
+    button.warn { background: #c1533c; }
+    button.stop { background: #6a7480; }
+    pre {
+        background: #0c0f12; border: 1px solid #263039; border-radius: 10px;
+        padding: 12px; font-size: 12px; line-height: 1.5; white-space: pre-wrap;
+        word-break: break-word; color: #b9d2c0; min-height: 120px;
+    }
+    .hint { font-size: 13px; color: #8fa3b0; line-height: 1.6; }
+    .hint b { color: #e8eef2; }
+</style>
+</head>
+<body>
+    <h1>Audio test</h1>
+    <p class="sub">
+        Plays the same sounds the wall panel uses. Use it to tell apart
+        &ldquo;the page is not producing sound&rdquo; from
+        &ldquo;the device is muted / volume is at zero&rdquo;.
+    </p>
+
+    <div class="row">
+        <button id="btn-on">ON blip</button>
+        <button id="btn-off">OFF blip</button>
+        <button id="btn-error" class="alt">Error tone</button>
+        <button id="btn-loop" class="alt">Loop tone (2 s)</button>
+        <button id="btn-stop" class="warn">Stop everything</button>
+    </div>
+
+    <pre id="out">Ready. Tap a button.</pre>
+
+    <p class="hint">
+        <b>How to read the result:</b><br>
+        &bull; <b>Media element works</b> (<code>play()</code> resolved) but you hear nothing &rarr; the iPad is muted or its media volume is at zero. Open <b>Settings &rarr; Sounds</b> or drag the volume slider in <b>Control Center</b> (it appears while the loop tone plays) — the hardware buttons are not needed.<br>
+        &bull; <b>play() rejected</b> &rarr; the page is being blocked (autoplay policy / low-power mode).<br>
+        &bull; <b>Nothing plays and no error</b> &rarr; the tap did not reach the page (cached bundle, or the panel is showing a cached page).
+    </p>
+
+<script>
+(function () {
+    var out = document.getElementById('out');
+    var lines = [];
+    var loopEl = null;
+
+    function log(text) {
+        lines.unshift(new Date().toISOString().slice(11, 19) + '  ' + text);
+        if (lines.length > 40) lines.pop();
+        out.textContent = lines.join('\n');
+    }
+
+    function describe(el) {
+        return 'readyState=' + el.readyState + ' duration=' + el.duration +
+            ' currentTime=' + el.currentTime.toFixed(2) +
+            ' paused=' + el.paused + ' error=' + (el.error ? el.error.code : 'none');
+    }
+
+    function play(src, label) {
+        var el = new Audio(src);
+        el.preload = 'auto';
+        el.setAttribute('x-webkit-airplay', 'deny');
+        log(label + ' → play() called');
+        var p = el.play();
+        if (p && p.then) {
+            p.then(function () {
+                log(label + ' → play() RESOLVED (' + describe(el) + ')');
+                setTimeout(function () {
+                    log(label + ' → after 400 ms (' + describe(el) + ')');
+                }, 400);
+            }).catch(function (err) {
+                log(label + ' → play() REJECTED: ' + (err && err.name ? err.name + ' ' + err.message : err));
+            });
+        } else {
+            // Very old Safari: no promise, just check the element afterwards.
+            setTimeout(function () {
+                log(label + ' → (no play() promise) ' + describe(el));
+            }, 400);
+        }
+        return el;
+    }
+
+    function stopAll() {
+        if (loopEl) {
+            loopEl.pause();
+            try { loopEl.currentTime = 0; } catch (e) {}
+            loopEl = null;
+            log('loop tone stopped');
+        }
+    }
+
+    document.getElementById('btn-on').onclick = function () {
+        stopAll();
+        play('/sounds/on.wav', 'on.wav');
+    };
+    document.getElementById('btn-off').onclick = function () {
+        stopAll();
+        play('/sounds/off.wav', 'off.wav');
+    };
+    document.getElementById('btn-error').onclick = function () {
+        stopAll();
+        play('/sounds/error.wav', 'error.wav');
+    };
+    document.getElementById('btn-loop').onclick = function () {
+        stopAll();
+        loopEl = new Audio('/sounds/test-loop.wav');
+        loopEl.preload = 'auto';
+        loopEl.loop = true;
+        loopEl.setAttribute('x-webkit-airplay', 'deny');
+        var p = loopEl.play();
+        if (p && p.then) {
+            p.then(function () { log('loop tone → play() RESOLVED (' + describe(loopEl) + ')'); })
+             .catch(function (e) { log('loop tone → play() REJECTED: ' + e.name + ' ' + e.message); });
+        }
+    };
+    document.getElementById('btn-stop').onclick = stopAll;
+
+    // Environment report, so we know what the panel is running.
+    var ua = navigator.userAgent;
+    var ctxState = 'n/a';
+    try {
+        var Ctor = window.AudioContext || window.webkitAudioContext;
+        ctxState = Ctor ? ('available (' + (window.AudioContext ? 'AudioContext' : 'webkitAudioContext') + ')') : 'not available';
+    } catch (e) { ctxState = 'error'; }
+    var session = 'not supported (needs Safari 16.4+)';
+    try {
+        if (navigator.audioSession) session = 'type=' + navigator.audioSession.type;
+    } catch (e) {}
+
+    log('userAgent: ' + ua);
+    log('Web Audio: ' + ctxState);
+    log('audioSession: ' + session);
+    log('page: ' + location.href);
+})();
+</script>
+</body>
+</html>
