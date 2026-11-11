@@ -9,64 +9,54 @@
 
         // Audible press feedback for the wall panel: a tap on a light plays a
         // short blip, so the press is confirmed even when the lamp itself is
-        // out of sight. Synthesised with Web Audio, so there is no asset to
-        // ship and no CDN (both banned here). Old Safari on the iPad needs the
-        // webkit prefix and only starts an AudioContext from a user gesture,
-        // hence unlock() must be called synchronously from the tap handler.
+        // out of sight.
+        //
+        // It is played through an <audio> element, NOT the Web Audio API: on
+        // iOS an AudioContext runs in the "ambient" audio session, which the
+        // hardware mute switch silences, while media elements use the
+        // "playback" session and stay audible. (The clean fix,
+        // `navigator.audioSession.type = 'playback'`, needs Safari 16.4+ and
+        // the wall panel is on iOS 9/12.) The WAVs in ./sounds are generated
+        // tones, so there is still no CDN involved.
         const Sound = (function () {
-            let ctx = null;
+            const FILES = {
+                on: '/sounds/on.wav',        // two rising blips: switched on
+                off: '/sounds/off.wav',      // two falling blips: switched off
+                error: '/sounds/error.wav'   // low tone: command rejected
+            };
 
-            function getContext() {
-                if (ctx) return ctx;
-                const Ctor = window.AudioContext || window.webkitAudioContext;
-                if (!Ctor) return null;
-                try {
-                    ctx = new Ctor();
-                } catch (e) {
-                    ctx = null;
-                }
-                return ctx;
-            }
+            // One element per sound, reused across presses so it stays warm.
+            // iOS allows play() on an element after it has been started by a
+            // gesture, and the toggle always runs inside one.
+            const elements = {};
 
-            // One short enveloped sine blip. The soft attack and exponential
-            // decay keep it a "tick" instead of a click/buzz.
-            function blip(freq, delay, duration, volume) {
-                const c = getContext();
-                if (!c) return;
+            function play(key) {
+                let el = elements[key];
                 try {
-                    const t0 = c.currentTime + delay;
-                    const osc = c.createOscillator();
-                    const gain = c.createGain();
-                    osc.type = 'sine';
-                    osc.frequency.setValueAtTime(freq, t0);
-                    gain.gain.setValueAtTime(0.0001, t0);
-                    gain.gain.exponentialRampToValueAtTime(volume, t0 + 0.006);
-                    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
-                    osc.connect(gain);
-                    gain.connect(c.destination);
-                    osc.start(t0);
-                    osc.stop(t0 + duration + 0.02);
+                    if (!el) {
+                        el = elements[key] = new Audio(FILES[key]);
+                        el.preload = 'auto';
+                        // Keep it out of AirPlay / Control Center where we can.
+                        el.setAttribute('x-webkit-airplay', 'deny');
+                    }
+                    try {
+                        el.currentTime = 0;
+                    } catch (e) {
+                        // Not seekable yet: play() will restart it anyway.
+                    }
+                    const started = el.play();
+                    if (started && started.catch) started.catch(() => {});
                 } catch (e) {
                     // Audio is optional feedback: never break the toggle.
                 }
             }
 
             return {
-                // Call from inside the tap/click handler, before any await.
-                unlock() {
-                    const c = getContext();
-                    if (!c) return;
-                    if (c.state === 'suspended' && c.resume) c.resume();
-                },
-                // Two quick blips: rising when switching on, falling when
-                // switching off, so the direction is audible without looking.
                 toggle(on) {
-                    blip(on ? 880 : 1320, 0, 0.07, 0.15);
-                    blip(on ? 1320 : 880, 0.075, 0.09, 0.15);
+                    play(on ? 'on' : 'off');
                 },
-                // Low tone when the command was rejected by the server.
                 error() {
-                    blip(200, 0, 0.18, 0.2);
+                    play('error');
                 }
             };
         })();
@@ -675,11 +665,9 @@
 
                 const next = !liveStateFor(light);
 
-                // Press feedback. unlock() runs inside the tap gesture (Safari
-                // requirement); the blip itself is scheduled immediately so the
-                // panel feels responsive, and a rejected command adds a low
-                // error tone.
-                Sound.unlock();
+                // Press feedback. The tap handler is a user gesture, which is
+                // what iOS requires before an <audio> element may play. A
+                // command the server rejects adds a low error tone.
                 Sound.toggle(next);
 
                 // In OPERATIVO mode, send command to server. The expected next
