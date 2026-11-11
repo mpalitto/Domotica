@@ -58,7 +58,7 @@ function alexaStop {
   alexaPid=""
 }
 
-trap 'alexaStop; rm -f /tmp/currentAlarm.alexa.$$.*' EXIT INT TERM
+trap 'alexaStop; rm -f /tmp/currentAlarm.alexa.$$.*' EXIT INT TERM HUP
 
 function toggleAlarm { 
   screen -S arduino433tx -X stuff "s:5EAAC1" 
