@@ -790,6 +790,52 @@ var _React = React,
   useRef = _React.useRef;
 var LIGHT_ICON = 100;
 var LIGHT_INSET = 25;
+var Sound = function () {
+  var ctx = null;
+  function getContext() {
+    if (ctx) return ctx;
+    var Ctor = window.AudioContext || window.webkitAudioContext;
+    if (!Ctor) return null;
+    try {
+      ctx = new Ctor();
+    } catch (e) {
+      ctx = null;
+    }
+    return ctx;
+  }
+  function blip(freq, delay, duration, volume) {
+    var c = getContext();
+    if (!c) return;
+    try {
+      var t0 = c.currentTime + delay;
+      var osc = c.createOscillator();
+      var gain = c.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, t0);
+      gain.gain.setValueAtTime(0.0001, t0);
+      gain.gain.exponentialRampToValueAtTime(volume, t0 + 0.006);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
+      osc.connect(gain);
+      gain.connect(c.destination);
+      osc.start(t0);
+      osc.stop(t0 + duration + 0.02);
+    } catch (e) {}
+  }
+  return {
+    unlock: function unlock() {
+      var c = getContext();
+      if (!c) return;
+      if (c.state === 'suspended' && c.resume) c.resume();
+    },
+    toggle: function toggle(on) {
+      blip(on ? 880 : 1320, 0, 0.07, 0.15);
+      blip(on ? 1320 : 880, 0.075, 0.09, 0.15);
+    },
+    error: function error() {
+      blip(200, 0, 0.18, 0.2);
+    }
+  };
+}();
 var API = {
   loadConfig: function loadConfig() {
     return _asyncToGenerator(_regenerator().m(function _callee() {
@@ -1534,6 +1580,8 @@ function RoomEditor(_ref5) {
             return _context7.a(2);
           case 1:
             next = !liveStateFor(light);
+            Sound.unlock();
+            Sound.toggle(next);
             if (!(operatingMode === 'OPERATIVO')) {
               _context7.n = 4;
               break;
@@ -1546,6 +1594,7 @@ function RoomEditor(_ref5) {
               _context7.n = 3;
               break;
             }
+            Sound.error();
             return _context7.a(2);
           case 3:
             _context7.n = 8;
@@ -1573,6 +1622,7 @@ function RoomEditor(_ref5) {
           case 7:
             _context7.p = 7;
             _t7 = _context7.v;
+            Sound.error();
           case 8:
             setLights(lights.map(function (l) {
               return l.id === lightId ? _objectSpread(_objectSpread({}, l), {}, {

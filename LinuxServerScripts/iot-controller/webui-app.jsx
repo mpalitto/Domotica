@@ -7,6 +7,70 @@
         // half of the growth over the original 50px box.
         const LIGHT_INSET = 25;
 
+        // Audible press feedback for the wall panel: a tap on a light plays a
+        // short blip, so the press is confirmed even when the lamp itself is
+        // out of sight. Synthesised with Web Audio, so there is no asset to
+        // ship and no CDN (both banned here). Old Safari on the iPad needs the
+        // webkit prefix and only starts an AudioContext from a user gesture,
+        // hence unlock() must be called synchronously from the tap handler.
+        const Sound = (function () {
+            let ctx = null;
+
+            function getContext() {
+                if (ctx) return ctx;
+                const Ctor = window.AudioContext || window.webkitAudioContext;
+                if (!Ctor) return null;
+                try {
+                    ctx = new Ctor();
+                } catch (e) {
+                    ctx = null;
+                }
+                return ctx;
+            }
+
+            // One short enveloped sine blip. The soft attack and exponential
+            // decay keep it a "tick" instead of a click/buzz.
+            function blip(freq, delay, duration, volume) {
+                const c = getContext();
+                if (!c) return;
+                try {
+                    const t0 = c.currentTime + delay;
+                    const osc = c.createOscillator();
+                    const gain = c.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(freq, t0);
+                    gain.gain.setValueAtTime(0.0001, t0);
+                    gain.gain.exponentialRampToValueAtTime(volume, t0 + 0.006);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
+                    osc.connect(gain);
+                    gain.connect(c.destination);
+                    osc.start(t0);
+                    osc.stop(t0 + duration + 0.02);
+                } catch (e) {
+                    // Audio is optional feedback: never break the toggle.
+                }
+            }
+
+            return {
+                // Call from inside the tap/click handler, before any await.
+                unlock() {
+                    const c = getContext();
+                    if (!c) return;
+                    if (c.state === 'suspended' && c.resume) c.resume();
+                },
+                // Two quick blips: rising when switching on, falling when
+                // switching off, so the direction is audible without looking.
+                toggle(on) {
+                    blip(on ? 880 : 1320, 0, 0.07, 0.15);
+                    blip(on ? 1320 : 880, 0.075, 0.09, 0.15);
+                },
+                // Low tone when the command was rejected by the server.
+                error() {
+                    blip(200, 0, 0.18, 0.2);
+                }
+            };
+        })();
+
         // API Service
         const API = {
             async loadConfig() {
@@ -611,12 +675,22 @@
 
                 const next = !liveStateFor(light);
 
+                // Press feedback. unlock() runs inside the tap gesture (Safari
+                // requirement); the blip itself is scheduled immediately so the
+                // panel feels responsive, and a rejected command adds a low
+                // error tone.
+                Sound.unlock();
+                Sound.toggle(next);
+
                 // In OPERATIVO mode, send command to server. The expected next
                 // state is included so lights whose device cannot report back
                 // (RF fallback) get their recorded state updated too.
                 if (operatingMode === 'OPERATIVO') {
                     const result = await API.toggleLight(light.code, next ? 'ON' : 'OFF');
-                    if (result.success === false) return;
+                    if (result.success === false) {
+                        Sound.error();
+                        return;
+                    }
                 } else if (operatingMode === 'CORREGGI' && isTracked(light)) {
                     // In CORREGGI mode, user is correcting state - also sync to backend
                     try {
@@ -625,7 +699,9 @@
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ code: light.code, state: next ? 'ON' : 'OFF' })
                         });
-                    } catch (e) {}
+                    } catch (e) {
+                        Sound.error();
+                    }
                 }
 
                 // Optimistic update: the toggle is instant, and the live state
