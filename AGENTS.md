@@ -97,6 +97,12 @@
   - `root@192.168.1.11` — eWeLink proxy host
   - `root@192.168.1.33` — Proxmox host (`pve`)
   - `root@192.168.1.1` — router LXC (`MAIN-router`)
+- **`.77` → `.33` is a hop that exists only for the Alexa alarm**: `.77`'s key
+  (`root@orangepione`) is in `.33`'s `authorized_keys` (with `restrict`) and
+  `.33`'s host key is in `.77`'s `known_hosts`. Both were added in Nov 2026 for
+  `currentAlarm.sh` (see the Alexa voice alert section). If the two ever fail to
+  reach each other, re-add: `ssh-keyscan -H 192.168.1.33 >> ~/.ssh/known_hosts`
+  on `.77` and the `.77` pubkey to `/root/.ssh/authorized_keys` on `.33`.
 - `macos/mount.sh` mounts `192.168.1.77:/root/Domotica/LinuxServerScripts` → `~/mnt/domotica` (uses NFS, requires sudo)
 - NFS export on server uses `all_squash,anonuid=0,anongid=0` so all clients map to root
 - Manual unmount: `sudo umount ~/mnt/domotica` or `diskutil unmount ~/mnt/domotica`
@@ -216,3 +222,86 @@
   that are not locally online, so managerLayer does not keep a stale
   `deviceConnected=yes` across a proxy restart (which caused a wasted WiFi
   attempt before the RF fallback).
+
+## Alexa CLI — `alexaCLI`, Proxmox CT106 (Nov 2026)
+
+- **What**: unofficial [`buddyh/alexa-cli`](https://github.com/buddyh/alexa-cli)
+  deployed in an unprivileged Debian 13 LXC `106` (`alexaCLI`) on `pve`
+  (`192.168.1.33`) — a script-driven Alexa control path independent of the
+  eWeLink ghost cloud bridge above.
+- **Container**: amd64, 1 core, 512 MB RAM, 256 MB swap, 4 GB on `local-lvm`,
+  `net0` on `vmbr0` (DHCP), `onboot=1`, **no root password and no SSH** — admin
+  via `pct exec 106 -- …` only. Deployed IP at build time: `192.168.1.212`.
+- **Boot DHCP race (fixed)**: the template's ifupdown path can start before the
+  veth is ready, leaving eth0 with no lease. `eth0-dhcp-retry.service` loops
+  (`ip -4 addr show eth0 | grep inet || dhclient -1 eth0`) for up to 2 min.
+  **Do not** try `systemd-networkd` — it fails in this unprivileged container.
+  Recovery if the unit ever fails: `pct exec 106 -- dhclient eth0`.
+- **Build** (shallow clone): `CGO_ENABLED=0 GOOS=linux GOARCH=amd64 make build
+  build-poller` → static `bin/alexacli` + `bin/alexa-poller`. Plain `make build`
+  produces a **darwin/arm64** binary — wrong target for the box.
+  Deploy: `pct push 106 … /usr/local/bin/alexacli --perms 755`.
+- **Auth**: `~/.alexa-cli/config.json` (`refresh_token`, `amazon_domain` =
+  `amazon.com`, `amazon_local` = `amazon.it`), mode `600`, copied from the Mac —
+  no headless re-login. Token is shared with the Mac; rotate with
+  `alexacli auth` if it leaks.
+- **Verified (Nov 2026)**: `alexacli devices` → `living`
+  (`G0922H0624250W2D`, ECHO, online) and `office` (`G090LF1173860LKH`, ECHO,
+  offline — a device-side state, not a CLI error). `alexacli speak "…" -d living`
+  returned HTTP 200 and spoke on the device.
+- **Homebrew alternative**: `buddyh/tap/alexacli` v0.6.0 is valid — its release
+  assets resolve (HTTP 200), so `brew install buddyh/tap/alexacli` works instead
+  of compiling.
+- **Source clone**: kept shallow at `~/Projects/APPs/alexa-cli` for upgrades;
+  `bin/` is not kept (the deployed binary lives in CT106).
+- **Volume — `alexa-volume`** (Nov 2026): alexacli has **no** volume command, and
+  `alexacli ask`/`history` are unusable on this account (activity history
+  returns `{"data": null}`, so `ask` always times out). Reading volume is done by
+  `/usr/local/bin/alexa-volume` in CT106 (source:
+  `LinuxServerScripts/miscellaneous/alexa-volume.py`, stdlib-only Python). It
+  reuses alexacli's refresh token (cookie exchange at
+  `api.amazon.com/ap/exchangetoken/cookies`, no client id needed) and calls
+  `GET https://layla.amazon.com/api/devices/deviceType/dsn/audio/v1/allDeviceVolumes`
+  (`alexa.amazon.com` returns an empty list — **layla is the host that works**),
+  joined with device names from `/api/devices-v2/device?cached=true`.
+  `alexa-volume [device] [--set N] [--json]`; setter goes through
+  `alexacli command "volume N" -d <device>`.
+- **Two volume scales**: the API reports `speakerVolume` **0–100** (percent), but
+  Alexa's utterance accepts **0–10** — `volume 4` ⇒ 40. Sending `volume 40` is
+  silently ignored (the reading does not change), which looks like a broken
+  setter. Values seen Nov 2026: living 50 (5/10), FireTVStick 3, Fire TV 15.
+  Devices that are offline (e.g. `office`) are absent from the volume list.
+- **Reach it from anywhere**: `ssh root@192.168.1.33 'pct exec 106 -- /usr/local/bin/alexa-volume living'`
+  (works from `.77` too). The Mac also has `~/.alexa-cli/config.json`, so the
+  repo script runs locally as well.
+
+## Current sensor alarm — Alexa voice alert (Nov 2026)
+
+- **What**: when the current sensor (`LinuxServerScripts/currentAlarm.sh`, port
+  `12345`, trigger 300 A-ish) crosses the threshold, the alarm actuator socket
+  (`s:5EAAC1` → `curr-alarm`) is toggled **and** the `living` Echo repeats
+  `Daniela, Daniela, Daniela! Alarm, Alarm, Alarm!!!` every ~5 s until the
+  current drops below `trigger-10`.
+- **Path**: `.77` has no route to the container (CT106 has no sshd), so the
+  script calls
+  `ssh root@192.168.1.33 'pct exec 106 -- /usr/local/bin/alexacli speak "…" -d living'`
+  (`timeout 20`, `BatchMode=yes`). One call ≈ 2.4 s. `.77`→`.33` key/host-key
+  trust is a prerequisite (see *Remote Access*).
+- **Implementation details**: `alexaStart`/`alexaStop` toggle a per-trigger flag
+  file in `/tmp/currentAlarm.alexa.<pid>.<n>`; a background loop speaks while it
+  exists. Stop does **not** kill an in-flight phrase (a fast alarm recovery used
+  to truncate the announcement mid-word) — it just lets it finish and stops the
+  repetitions. The read loop is never blocked.
+- **Tunables** (env, defaults): `ALEXA_ALARM_DEVICE=living`,
+  `ALEXA_ALARM_TEXT=…`, `ALEXA_ALARM_PAUSE=5`, `ALEXA_ALARM_TIMEOUT=20`.
+  Log: `LinuxServerScripts/.alarm_alexa.log` (gitignored, appended).
+- **Test without touching RF**: extract the block and run it —
+  `eval "$(sed -n '/^# --- Allarme vocale/,/^trap /p' currentAlarm.sh | sed '$d')"; alexaStart; sleep 12; alexaStop`.
+  End-to-end: `printf 'nodeMCU-currentSensor 0\n… 400\n' | nc 192.168.1.77 12345`
+  triggers a real alarm (socket toggles + speech), so use it deliberately.
+- **Restart after editing**: `screen -S current -X quit`, then
+  `kill $(ss -ltnp | sed -n 's/.*:12345.*pid=\([0-9]*\).*/\1/p')` (a leftover
+  `socat` keeps the port bound), then
+  `export IoTserverScripts=/root/Domotica/LinuxServerScripts; $IoTserverScripts/startCurrentAlarm.sh`.
+  Beware `pkill -f`/`pgrep -f` here: the pattern matches the remote `bash -c`
+  running your own command and kills your session.
