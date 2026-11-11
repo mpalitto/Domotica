@@ -12,9 +12,56 @@
 
 PORT=12345
 
+# --- Allarme vocale su Alexa -------------------------------------------------
+# alexacli gira nel container CT106 su pve (192.168.1.33). Il container non ha
+# sshd, quindi si passa da pve con "pct exec". .77 deve poter fare ssh root@.33
+# (chiave in authorized_keys + host key in known_hosts).
+ALEXA_DEVICE="${ALEXA_ALARM_DEVICE:-living}"
+ALEXA_TEXT="${ALEXA_ALARM_TEXT:-Daniela, Daniela, Daniela! Alarm, Alarm, Alarm!!!}"
+ALEXA_PAUSE="${ALEXA_ALARM_PAUSE:-5}"       # secondi tra due ripetizioni
+ALEXA_TIMEOUT="${ALEXA_ALARM_TIMEOUT:-20}"  # timeout della singola chiamata
+alexaLog="$IoTserverScripts/.alarm_alexa.log"
+alexaFlag="/tmp/currentAlarm.alexa.$$"
+alexaPid=""
+
+function alexaSpeak {
+  if ! timeout "$ALEXA_TIMEOUT" ssh -o BatchMode=yes -o ConnectTimeout=5 root@192.168.1.33 \
+       "pct exec 106 -- /usr/local/bin/alexacli speak \"$ALEXA_TEXT\" -d \"$ALEXA_DEVICE\"" >>"$alexaLog" 2>&1; then
+    echo "$(date '+%F %T') Alexa speak FAILED (device=$ALEXA_DEVICE)" >>"$alexaLog"
+  fi
+}
+
+# ripete la frase ogni ALEXA_PAUSE secondi finche' il file flag esiste
+function alexaStart {
+  [ -n "$ALEXA_TEXT" ] || return
+  alexaStop
+  touch "$alexaFlag"
+  (
+    while [ -e "$alexaFlag" ]; do
+      echo "$(date '+%F %T') alarm on -> Alexa($ALEXA_DEVICE)" >>"$alexaLog"
+      alexaSpeak
+      sleep "$ALEXA_PAUSE"
+    done
+  ) &
+  alexaPid=$!
+}
+
+function alexaStop {
+  rm -f "$alexaFlag"
+  if [ -n "$alexaPid" ]; then
+    command -v pkill >/dev/null && pkill -TERM -P "$alexaPid" 2>/dev/null
+    kill "$alexaPid" 2>/dev/null
+    wait "$alexaPid" 2>/dev/null
+    alexaPid=""
+  fi
+}
+
+trap alexaStop EXIT INT TERM
+
 function toggleAlarm { 
   screen -S arduino433tx -X stuff "s:5EAAC1" 
   echo Alarm $1
+  if [ "$1" = "on" ]; then alexaStart; else alexaStop; fi
 }
 
 alarm="off"
