@@ -307,6 +307,12 @@
             font-size: 60px;
             /* Big touch target for the wall panel */
             -webkit-tap-highlight-color: rgba(255, 220, 0, 0.35);
+            /* Press must react on touchstart, without the double-tap zoom
+               delay and without the long-press callout / selection. */
+            touch-action: manipulation;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
         }
 
         .light-bulb:hover {

@@ -794,23 +794,49 @@ var Sound = function () {
   var FILES = {
     on: '/sounds/on.wav',
     off: '/sounds/off.wav',
-    error: '/sounds/error.wav'
+    error: '/sounds/error.wav',
+    silence: '/sounds/silence.wav'
   };
   var elements = {};
+  function element(key) {
+    if (!elements[key]) {
+      var el = new Audio(FILES[key]);
+      el.preload = 'auto';
+      el.setAttribute('x-webkit-airplay', 'deny');
+      elements[key] = el;
+    }
+    return elements[key];
+  }
   function play(key) {
-    var el = elements[key];
     try {
-      if (!el) {
-        el = elements[key] = new Audio(FILES[key]);
-        el.preload = 'auto';
-        el.setAttribute('x-webkit-airplay', 'deny');
-      }
+      var el = element(key);
       try {
         el.currentTime = 0;
       } catch (e) {}
       var started = el.play();
       if (started && started["catch"]) started["catch"](function () {});
     } catch (e) {}
+  }
+  var warmed = false;
+  function warmUp() {
+    if (warmed) return;
+    warmed = true;
+    play('silence');
+  }
+  ['on', 'off', 'error'].forEach(function (key) {
+    try {
+      element(key).load();
+    } catch (e) {}
+  });
+  if (typeof document !== 'undefined') {
+    document.addEventListener('touchstart', function handler() {
+      document.removeEventListener('touchstart', handler, false);
+      warmUp();
+    }, false);
+    document.addEventListener('mousedown', function handler() {
+      document.removeEventListener('mousedown', handler, false);
+      warmUp();
+    }, false);
   }
   return {
     toggle: function toggle(on) {
@@ -1310,8 +1336,15 @@ function Light(_ref4) {
     lightX: 0,
     lightY: 0
   });
+  var lastTouch = useRef(0);
+  var handleTouchStart = function handleTouchStart(e) {
+    if (editMode) return;
+    lastTouch.current = Date.now();
+    onToggle(light.id);
+  };
   var handleMouseDown = function handleMouseDown(e) {
     if (!editMode) {
+      if (Date.now() - lastTouch.current < 700) return;
       onToggle(light.id);
       return;
     }
@@ -1361,6 +1394,7 @@ function Light(_ref4) {
       top: light.y
     },
     onMouseDown: handleMouseDown,
+    onTouchStart: handleTouchStart,
     title: light.name
   }, React.createElement("div", {
     className: "light-circle"

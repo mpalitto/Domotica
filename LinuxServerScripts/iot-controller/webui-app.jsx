@@ -22,7 +22,8 @@
             const FILES = {
                 on: '/sounds/on.wav',        // two rising blips: switched on
                 off: '/sounds/off.wav',      // two falling blips: switched off
-                error: '/sounds/error.wav'   // low tone: command rejected
+                error: '/sounds/error.wav',  // low tone: command rejected
+                silence: '/sounds/silence.wav'
             };
 
             // One element per sound, reused across presses so it stays warm.
@@ -30,15 +31,20 @@
             // gesture, and the toggle always runs inside one.
             const elements = {};
 
+            function element(key) {
+                if (!elements[key]) {
+                    const el = new Audio(FILES[key]);
+                    el.preload = 'auto';
+                    // Keep it out of AirPlay / Control Center where we can.
+                    el.setAttribute('x-webkit-airplay', 'deny');
+                    elements[key] = el;
+                }
+                return elements[key];
+            }
+
             function play(key) {
-                let el = elements[key];
                 try {
-                    if (!el) {
-                        el = elements[key] = new Audio(FILES[key]);
-                        el.preload = 'auto';
-                        // Keep it out of AirPlay / Control Center where we can.
-                        el.setAttribute('x-webkit-airplay', 'deny');
-                    }
+                    const el = element(key);
                     try {
                         el.currentTime = 0;
                     } catch (e) {
@@ -49,6 +55,38 @@
                 } catch (e) {
                     // Audio is optional feedback: never break the toggle.
                 }
+            }
+
+            // iOS opens the media (playback) session lazily and the first
+            // playback in a session is delayed by a few hundred ms. Touching
+            // anything plays 100 ms of silence once, which opens the channel
+            // early so that the first real press is heard immediately.
+            let warmed = false;
+            function warmUp() {
+                if (warmed) return;
+                warmed = true;
+                play('silence');
+            }
+
+            // Fetch the files up front so the first press does not wait for
+            // them (iOS is lazy about preload, so ask explicitly).
+            ['on', 'off', 'error'].forEach(key => {
+                try {
+                    element(key).load();
+                } catch (e) {}
+            });
+
+            // Note: the `once` option of addEventListener is not available on
+            // the old Safari of the wall panel, so remove the listener by hand.
+            if (typeof document !== 'undefined') {
+                document.addEventListener('touchstart', function handler() {
+                    document.removeEventListener('touchstart', handler, false);
+                    warmUp();
+                }, false);
+                document.addEventListener('mousedown', function handler() {
+                    document.removeEventListener('mousedown', handler, false);
+                    warmUp();
+                }, false);
             }
 
             return {
@@ -414,9 +452,22 @@
         function Light({ light, state, tracked, onToggle, onPositionChange, onRemove, editMode }) {
             const [isDragging, setIsDragging] = useState(false);
             const dragStart = useRef({ x: 0, y: 0, lightX: 0, lightY: 0 });
+            // When the last touch was acted on. iOS delivers the synthetic
+            // mouse events ~300 ms after the finger lifts, so a press handled
+            // on touchstart must not be handled again on the mousedown that
+            // follows.
+            const lastTouch = useRef(0);
+
+            const handleTouchStart = (e) => {
+                if (editMode) return;   // dragging still uses the mouse path
+                lastTouch.current = Date.now();
+                onToggle(light.id);
+            };
 
             const handleMouseDown = (e) => {
                 if (!editMode) {
+                    // Ignore the synthetic mousedown that follows a touch.
+                    if (Date.now() - lastTouch.current < 700) return;
                     onToggle(light.id);
                     return;
                 }
@@ -470,6 +521,7 @@
                         top: light.y,
                     }}
                     onMouseDown={handleMouseDown}
+                    onTouchStart={handleTouchStart}
                     title={light.name}
                 >
                     <div className="light-circle"></div>
