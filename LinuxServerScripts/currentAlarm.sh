@@ -21,7 +21,8 @@ ALEXA_TEXT="${ALEXA_ALARM_TEXT:-Daniela, Daniela, Daniela! Alarm, Alarm, Alarm!!
 ALEXA_PAUSE="${ALEXA_ALARM_PAUSE:-5}"       # secondi tra due ripetizioni
 ALEXA_TIMEOUT="${ALEXA_ALARM_TIMEOUT:-20}"  # timeout della singola chiamata
 alexaLog="$IoTserverScripts/.alarm_alexa.log"
-alexaFlag="/tmp/currentAlarm.alexa.$$"
+alexaSeq=0
+alexaFlag=""
 alexaPid=""
 
 function alexaSpeak {
@@ -31,13 +32,18 @@ function alexaSpeak {
   fi
 }
 
-# ripete la frase ogni ALEXA_PAUSE secondi finche' il file flag esiste
+# ripete la frase ogni ALEXA_PAUSE secondi finche' il file flag esiste.
+# Lo stop NON uccide la ripetizione in corso: la frase viene finita di dire
+# (altrimenti un rientro rapido dell'allarme tronca l'annuncio a meta').
 function alexaStart {
   [ -n "$ALEXA_TEXT" ] || return
   alexaStop
+  alexaSeq=$((alexaSeq + 1))
+  alexaFlag="/tmp/currentAlarm.alexa.$$.$alexaSeq"
   touch "$alexaFlag"
   (
-    while [ -e "$alexaFlag" ]; do
+    flag="$alexaFlag"
+    while [ -e "$flag" ]; do
       echo "$(date '+%F %T') alarm on -> Alexa($ALEXA_DEVICE)" >>"$alexaLog"
       alexaSpeak
       sleep "$ALEXA_PAUSE"
@@ -47,16 +53,12 @@ function alexaStart {
 }
 
 function alexaStop {
-  rm -f "$alexaFlag"
-  if [ -n "$alexaPid" ]; then
-    command -v pkill >/dev/null && pkill -TERM -P "$alexaPid" 2>/dev/null
-    kill "$alexaPid" 2>/dev/null
-    wait "$alexaPid" 2>/dev/null
-    alexaPid=""
-  fi
+  [ -n "$alexaFlag" ] && rm -f "$alexaFlag"
+  alexaFlag=""
+  alexaPid=""
 }
 
-trap alexaStop EXIT INT TERM
+trap 'alexaStop; rm -f /tmp/currentAlarm.alexa.$$.*' EXIT INT TERM
 
 function toggleAlarm { 
   screen -S arduino433tx -X stuff "s:5EAAC1" 
