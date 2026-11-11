@@ -265,7 +265,8 @@
   (`alexa.amazon.com` returns an empty list — **layla is the host that works**),
   joined with device names from `/api/devices-v2/device?cached=true`.
   `alexa-volume [device] [--set N] [--json]`; setter goes through
-  `alexacli command "volume N" -d <device>`.
+  `alexacli command "volume N" -d <device>`. `--level` prints just the percent
+  (e.g. `30`) for scripts — that is what `currentAlarm.sh` uses.
 - **Two volume scales**: the API reports `speakerVolume` **0–100** (percent), but
   Alexa's utterance accepts **0–10** — `volume 4` ⇒ 40. Sending `volume 40` is
   silently ignored (the reading does not change), which looks like a broken
@@ -293,8 +294,17 @@
   to truncate the announcement mid-word) — it just lets it finish and stops the
   repetitions. The read loop is never blocked.
 - **Tunables** (env, defaults): `ALEXA_ALARM_DEVICE=living`,
-  `ALEXA_ALARM_TEXT=…`, `ALEXA_ALARM_PAUSE=5`, `ALEXA_ALARM_TIMEOUT=20`.
-  Log: `LinuxServerScripts/.alarm_alexa.log` (gitignored, appended).
+  `ALEXA_ALARM_TEXT=…`, `ALEXA_ALARM_PAUSE=5`, `ALEXA_ALARM_TIMEOUT=20`,
+  `ALEXA_ALARM_LEVEL=9` (0-10). Log: `LinuxServerScripts/.alarm_alexa.log`
+  (gitignored, appended).
+- **Volume handling**: before the first phrase the announcer reads the Echo's
+  volume (`alexa-volume … --level`, percent), raises it to `ALEXA_ALARM_LEVEL`
+  (9 ⇒ 90 %) only if it is lower, waits 2 s, then speaks; when the alarm clears
+  the background loop finishes the phrase in flight and restores the saved
+  percentage rounded to the nearest 0-10 step (`(prev+5)/10`). Restore is
+  skipped if a new alarm already started, and the raise is skipped if the alarm
+  clears during the volume read — so a too-short alarm changes nothing.
+  Verified: 30 → 90 → speak → 30.
 - **Test without touching RF**: extract the block and run it —
   `eval "$(sed -n '/^# --- Allarme vocale/,/^trap /p' currentAlarm.sh | sed '$d')"; alexaStart; sleep 12; alexaStop`.
   End-to-end: `printf 'nodeMCU-currentSensor 0\n… 400\n' | nc 192.168.1.77 12345`
