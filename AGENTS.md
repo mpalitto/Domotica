@@ -90,6 +90,45 @@
 - **Endpoints/env**: `/api/states/stream`, `/api/states`, `/api/config`, `/api/light/toggle` (hex RF codes only), `/api/house-map`, `/api/room/:id`. Overridable: `IoTserverScripts`, `EWELINK_PROXY_HOST/PORT`, `STATE_POLL_MS`, `PORT`.
 - **Resilient**: if proxy is unreachable it logs once and keeps last known state; an empty `/devices` is treated as "still starting up" not "all off". Restart with `export IoTserverScripts=/root/Domotica/LinuxServerScripts; $IoTserverScripts/startIoT-WEBui.sh`.
 
+## Lights & wall buttons — quick recipes
+
+Paths are repo-relative; on `.77` everything under `LinuxServerScripts/` lives at
+`/root/Domotica/LinuxServerScripts/`. The Mac clone has the full tree, so read configs
+locally — no SSH needed.
+
+- **Status of all devices** (fastest, from the Mac):
+  `source macos/UI.sh && sonoff list [on|off|online|offline|cloud]`.
+  The proxy also lists non-lights (`water-valves`, `riscaldamento`, `ricircolo`,
+  `irrigazione`); `config/sONOFF.config` is the authority on what is a light.
+  Join proxy↔config by **deviceID, never by alias** — proxy aliases are local labels
+  and have drifted before (`nnsisa1/2`, `sofa` → restored to `wall-oven`, `piano`,
+  `column` on 2026-11-21). They are now in sync; `tools/check-config.py` proves it.
+- **Which wall button toggles light X**:
+  `grep -n "<alias>" LinuxServerScripts/button2sONOFF/config/buttons.config`
+  → `REMOTE_ID # location` then `button N: alias`; the wire code is
+  `REMOTE_ID + N` (`4A77D` + `2` = `4A77D2`). A button may map several aliases
+  (they are toggled together).
+- **Invariant**: every `button N:` target must be an alias defined in `sONOFF.config`.
+  Unknown aliases are dropped **silently** by `managerLayer.js`
+  (`switching foo: undefined → ON`, no WiFi set, no RF). Run
+  `LinuxServerScripts/button2sONOFF/tools/check-config.py` after any edit — it also
+  checks list↔config RF codes, duplicate alias/deviceID/RF, proxy alias agreement
+  and `iot-controller/map-conf.json` codes (`--aliases` needed on `.77`, whose sparse
+  checkout has no `eWeLink-Proxy/`).
+- **"What was the last press / did it act?"**:
+  `button2sONOFF/logs/buttonPressReceiver.sh.log` (reception, fusion, `buttonID:`)
+  then `button2sONOFF/logs/managerLayer.js.log` (`dealing button`, `switching …`,
+  `send_wifi_set` / `screen … s:CODE` for RF). Timestamps in the receiver log are
+  epoch-ms from the receivers.
+- **Restart `managerLayer.js` only** (leaves `:1234`/`:5678` and their `socat` alone):
+  `screen -S managerLayer.js -X quit`, then
+  `screen -dmS managerLayer.js bash -c 'echo Starting managerLayer.js…; exec /root/.nvm/versions/node/v22.20.0/bin/node /root/Domotica/LinuxServerScripts/button2sONOFF/managerLayer.js 2>&1 | tee -a /root/Domotica/LinuxServerScripts/button2sONOFF/logs/managerLayer.js.log'`.
+  There is no orchestrator to restart it for you. The proxy reconnects to `:7777`
+  and re-sends `CONNECTED`/`STATE_UPDATE` for every device, so state is repopulated.
+- **Test a button mapping without a physical press**: `echo "4A77D 2" > logs/button_fifo`
+  on `.77` — this exercises `managerLayer` only (no fusion/logging in the receiver) and
+  **does toggle the real light**.
+
 ## Remote Access
 
 - **The agent can run commands on these boxes directly** — the shell tool works and key-based SSH is password-less (`BatchMode=yes`, no TTY needed). Diagnose, fix and verify on-box yourself instead of asking the user to paste terminal output. Reserve user round-trips for things only their machine/physical devices can do: `sudo` on the Mac, phone Wi-Fi toggles, etc.
