@@ -725,12 +725,58 @@ and never needs the manager restarted.
 
 ## 9. Next
 
+0. **▶ NEXT STEP (agreed 2026-11-22, NOT started) — firmware staleness guard.**
+   Stop a receiver from sending a report whose RF stamp is already old. This is the one change that
+   lets the server fuse on **RF time only** (§3) and makes the buffered/stale-line over-fusion
+   impossible at the source. It does **not** replace the 1500 ms window: a 1288 ms late lock is a
+   genuine late *decode*, not a stale send.
+   - **Why stale sends exist**: `sendDataToServer()` → `ensureSocketConnection()` →
+     `espClient.connect()` (blocking, seconds) and `sendLine()` (up to 1 s), plus one retry 100 ms
+     later. A press during a Wi-Fi/TCP hiccup is delivered seconds late while still carrying the
+     **original** pulse time. An SNTP step between stamping and sending does the same. Measured
+     pathologies: **10.7 s** and **13.6 s**; normal end-to-end is p50 141 ms (central) / 276 ms
+     (laundry), p90 < 1 s.
+   - **Where**: `Arduino/RFreceiver_esp8266/RFreceiver_esp8266.ino`, in the `codeConfidence == 1`
+     send block, before `monotonicEpochMs(firstPulseEpochMs)`.
+   - **Rule** (`#define STALE_GUARD_MS 3000`): drop only in the *positive* direction — a negative
+     age means the unit's clock is ahead, which is normal (up to −0.9 s observed) and must **not**
+     drop. `firstPulseEpochMs == 0` (SNTP not synced) keeps the legacy path untouched.
+     ```cpp
+     unsigned long long nowMs = nowEpochMs();
+     if (timeSynced && firstPulseEpochMs != 0 && nowMs > firstPulseEpochMs &&
+         nowMs - firstPulseEpochMs > STALE_GUARD_MS) {
+       Serial.printf("STALE %llu ms, dropped\n", nowMs - firstPulseEpochMs);
+     } else {
+       unsigned long long rfEpoch = monotonicEpochMs(firstPulseEpochMs);
+       /* ... build + send exactly as today ... */
+     }
+     ```
+   - **Threshold**: 3 s is 3× the p90 and a third of the smallest observed pathology; 5 s is the
+     conservative alternative if a legitimate slow send is ever dropped.
+   - **Cheap rehearsal (no reflash — do this first)**: the server already computes
+     `lag = now - f_ts`, so a temporary `lag > STALE_GUARD_MS → drop` in `buttonPressReceiver.sh`
+     has the same semantics with zero risk. Run it for a week and count what it would have dropped
+     (expect only the pathological ones) before any unit leaves the wall. The firmware version is
+     still the right home: it keeps the contract "a v2 message is a *fresh* RF event" true at the
+     source and survives a server rewrite.
+   - **Bench test**: build with `STALE_GUARD_MS 0` → every press logs `STALE … dropped`; restore
+     3000 → zero `STALE` lines over a normal session.
+   - **Rollout**: USB per unit (OTA stays bench-only, §7), one at a time, **central last**;
+     receivers reconnect lazily on their next press (§4).
+   - **Then (separate change)**: delete the `OR arrival` clause in §3 and keep RF time only.
+     Re-add `test_fusion.sh` **Run G** (a buffered line must not fuse away a separate later press)
+     as the regression guard — it was written on 2026-11-22 and removed when the union rule was
+     kept.
+
 1. ✅ **DONE 2026-10-18 — the fridge unit `rx-241002` was USB-flashed to v2.2** (its OTA listener
    was wedged, §7 "OTA", so USB was the only path; no backup needed as v2.1 is reproducible from
    this repo). ✅ Its box is **installed in the kitchen** (it was on the bench only while flashing):
    today's bench presses (`4AA0D`, at the Mac) were heard by `rf-central` 6/6 and `rf-laundry` 6/6
    but **not** by the fridge, while it does hear the kitchen `4A0E9` remote (last reception
    2026-10-19 ~11:13) — which is what kitchen placement predicts.
+   **Confirmed over the whole log (2026-11-22):** it hears **234/286 = 82 %** of `4A0E9` presses
+   (9 of the last 12, including today 09:01) and **0–10 %** of every other remote, so its 9.6 %
+   share of *all* presses is location, not a fault.
 2. ✅ **DONE 2026-10-19 — `nodeMCU-0` = `rx-058ef5` / `rf-central` USB-flashed to v2.2**
    (`Hash of data verified`; banner `Version: 2.2 … id: rx-058ef5` matching the MAC prediction;
    compressed image md5 `f7783deb438efb63192e8271e7e3c799`, identical to the other two units).

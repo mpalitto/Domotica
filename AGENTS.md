@@ -34,6 +34,12 @@
   which was measured on arrival only. The window is now applied to **either** RF time (field 3)
   **or** arrival, so that press fuses; `test_fusion.sh` Run F is the regression guard. The
   forwarding gate is unchanged (still arrival-based) on purpose — see `DOCs/RF-EVENT-FUSION.md` §7.
+  **Next step (agreed 2026-11-22, NOT started):** a **staleness guard** in the receiver firmware —
+  drop a report whose RF stamp is already > 3 s old at send time (a delayed send after a Wi-Fi/TCP
+  hiccup, or an SNTP step, is what produces the buffered/stale copies). It is the one change that
+  lets the server fuse on RF time only and delete the arrival OR-clause, fixing the buffered-line
+  over-fusion. Do the server-side `lag` rehearsal first (no reflash). Design, code sketch and
+  rollout: `DOCs/RF-EVENT-FUSION.md` §9 item 0.
   **Current fleet state (2026-10-19, later):** production confirmed **36/36 presses → one FIFO write
   each** (five `n=3` groups, no split groups, no double toggles). Laundry `rx-55d68f` then went
   silent and was believed **RF-deaf after an antenna swap** — that verdict was wrong: the real fault
