@@ -154,6 +154,31 @@ check "fusion record has no stray CR" \
     'FUSED 4AA0D1RFXCOM n=2 forwarded=1 via=rf-fridge@0ms,nodeMCU-1@v1' \
     "$(grep '^FUSED ' "$LOG")"
 
+# ---------------------------------------------------------------------------
+echo
+echo "=== Run F: late-lock duplicate with a LATE arrival still fuses (2026-11-22) ==="
+NOW_MS=1795349655823
+source "$SRC/buttonPressReceiver.sh"
+LOG="$T/runF.log"; : > "$LOG"
+
+{
+  # Real coffee-table press: rf-central locked on the first repetition, the
+  # laundry unit locked 1288 ms later and its line reached the server 342 ms
+  # after central's, so the arrival gap was 1630 ms — past the old 1500 ms
+  # arrival window, which forwarded it again and toggled the light OFF then ON.
+  step 1795349655823 "0A1400a F4AA0D1002 1795349655884 rx-241002"
+  step 1795349657453 "0A1400a F4AA0D1002 1795349657172 rx-TEST01"
+  # A different button closes the group and prints the summary.
+  step 1795349659000 "0A1400a F4A85C0101 1795349658950 rx-241002"
+} > "$LOG" 2>&1
+
+check "the late view did not become a second press" 1 \
+    "$(grep -c 'sending 4AA0D 2 RFXCOM to FIFO' "$LOG")"
+check "it fused on the 1288 ms RF skew" 1 \
+    "$(grep -c '^fusing (recv=rf-lab skew=1288ms lag=281ms n=2)$' "$LOG")"
+check "the press was forwarded exactly once" 1 \
+    "$(grep -c '^FUSED 4AA0D2RFXCOM n=2 forwarded=1 via=rf-fridge@0ms,rf-lab@1288ms$' "$LOG")"
+
 echo
 if (( fails == 0 )); then echo "ALL TESTS PASSED"; else echo "$fails TEST(S) FAILED"; fi
 # KEEP=1 preserves the run logs under $T for debugging.

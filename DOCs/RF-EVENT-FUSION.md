@@ -200,19 +200,23 @@ script is **executed** (not sourced) — that is what makes it unit-testable.
 - Parse the message; **v2 iff** header is `0A1400a` *and* field 3 is ≥ 13 digits → epoch mode.
   Everything else (v1 `millis()`, KINETIC) follows the untouched legacy path.
 - Group state per port subshell: `{key, server_t0, first_epoch, count, seen[], forwarded}`.
-- **Same key within `FUSION_WINDOW_MS` → fused**: not re-forwarded, just counted, and logged with
-  `skew` (receiver epoch − group's first epoch, i.e. RF-time skew) and `lag` (server now −
-  receiver epoch, i.e. **end-to-end latency**). A large or negative `lag` = that receiver's SNTP
-  is off → clock problems surface in the log instead of as mystery dropped presses.
+- **Same key within `FUSION_WINDOW_MS` in EITHER time base → fused**: not re-forwarded, just
+  counted, and logged with `skew` (receiver epoch − group's first epoch, i.e. RF-time skew) and
+  `lag` (server now − receiver epoch, i.e. **end-to-end latency**). A large or negative `lag` =
+  that receiver's SNTP is off → clock problems surface in the log instead of as mystery dropped
+  presses. **Changed 2026-11-22** (was arrival-only): a late-locking receiver can also have its
+  line arrive late, and then an arrival-only window split a real press into two toggles — the
+  coffee press, 1288 ms apart in RF time but 1630 ms apart in arrival. The RF timestamps are
+  comparable across units (minimum observed cross-receiver `skew` is 1–4 ms), so RF time is the
+  physical measure; arrival is kept because a buffered line can arrive next to a later press, and
+  the stale-copy case in §7 relies on it. Checking both is fusion-biased, the safe direction.
 - **Act on first arrival** (latency win); later copies are confirmations, not blockers.
-- **`W` is 1500 ms** (raised from 1000 on 2026-10-19 — see §4 step 4; the 1000 ms margin was
-  consumed in the field). Measured intra-press repeat spacing is 70–270 ms and a receiver may lock
-  onto a *late* repeat, so the spread is quantized in whole repeat intervals and the ≈800 ms worst
-  case first assumed was **beaten for real: 914 ms** on the first three-receiver press (fridge,
-  2026-10-19). 1500 ms covers that with margin while staying below the smallest observed gap
-  between separate presses (1.9 s), so two genuine presses are never merged. Knob:
-  `FUSION_WINDOW_MS`. Note the window is measured on **server arrival** time (`now - FUSION_T0`),
-  not on the epochs, so network jitter adds to the spread on top of repeat-lock.
+- **`W` is 1500 ms** (raised from 1000 on 2026-10-19 — see §4 step 4). Measured intra-press repeat
+  spacing is 70–270 ms and a receiver may lock onto a *late* repeat, so the spread is quantized in
+  whole repeat intervals: field worst cases are 914 ms (fridge, 2026-10-19) and 1288 ms (laundry,
+  2026-11-22). The closest genuine pair of separate presses in the log is ~1.6 s (same receiver,
+  same code; the older 1.9 s figure was optimistic), so 1500 ms keeps two genuine presses apart.
+  Knob: `FUSION_WINDOW_MS`.
 - The legacy 2 s debounce was the forwarding gate while any v1 receiver was in the fleet (that is
   what stops a v1 + v2 pair from toggling a light twice). **`FUSION_ENABLED=1` since 2026-10-19**,
   the whole fleet then speaking v2.2: it swaps that gate for `FUSION_WINDOW_MS` on v2 events,
@@ -254,9 +258,10 @@ FUSED FFFFE1RFXCOM n=2 forwarded=1 via=rxtest-01@0ms,rxtest-02@40ms
 summary listing `nodeMCU-0@v1`), the legacy debounce still swallowing a stale v1 re-report from
 *outside* the fusion window, the `FUSION_ENABLED=1` tight window letting a real second press
 through, **a 914 ms late lock fusing rather than splitting the press** (the field worst case that
-drove `W` to 1500 ms — this is the regression guard for the double-toggle risk), the **KINETIC
-regression path**, and invalid input. Runs green on macOS and on `.77` (bash 5.2). `KEEP=1
-bash test_fusion.sh` keeps the per-run logs under `$T` for inspection.
+drove `W` to 1500 ms — this is the regression guard for the double-toggle risk), the **2026-11-22
+coffee regression** (1288 ms RF skew / 1630 ms arrival must still produce exactly one FIFO write),
+the **KINETIC regression path**, and invalid input. Runs green on macOS and on `.77` (bash 5.2).
+`KEEP=1 bash test_fusion.sh` keeps the per-run logs under `$T` for inspection.
 
 ---
 
@@ -624,6 +629,20 @@ conclude the RXB6 is worse until (2) runs; a superhet RXB6 should out-hear the c
       *if* the fresh copy were forwarded first and the stale copy arrived later, the stale copy
       would open a **second** group outside the window and toggle a second time. Firmware-side fix
       if it recurs: drop a message whose stamp is already more than a few seconds old.
+- [x] **FIXED 2026-11-22 — one coffee-table press toggled the light OFF then ON (fusion split).**
+      `rf-central` heard the press first and forwarded it; the laundry unit locked onto a repeat
+      1288 ms later in RF time and its line reached the server 342 ms after central's, so the
+      **arrival** gap was 1630 ms > `W`=1500 and it opened a second group → a second FIFO write
+      1.3 s later (`managerLayer`: `switching coffee: ON → OFF` then `OFF → ON`). Root cause: the
+      window was measured on server arrival only, so repeat-lock *plus* transport jitter counted
+      against it. Fix: fuse the same code if it is within `FUSION_WINDOW_MS` in **either** RF time
+      (field 3) or arrival time; the receivers' clocks agree within a few ms (minimum observed
+      cross-receiver skew 1–4 ms), so RF time is the physical quantity. Regression test:
+      `test_fusion.sh` Run F (1288 ms skew / 1630 ms arrival → exactly one FIFO write).
+      Deliberately **not** changed: the forwarding gate and the arrival-based fusion still merge a
+      buffered/stale copy (a delayed line can look adjacent to a later press). Forwarding those
+      would reintroduce the 13.6 s stale-copy double toggle in the WATCH item above; fusion-biased
+      is the safe direction for a light switch.
 
 ## 8. How to resume this project in a future session
 1. This file: `DOCs/RF-EVENT-FUSION.md` (source of truth).

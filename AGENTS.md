@@ -29,6 +29,11 @@
   first `n=3` groups; `test_fusion.sh` now has a regression guard for that 914 ms case. The laundry
   unit's decode is the flakiest in the fleet (2 of those 5 presses arrived as corrupt codes →
   `INVALID` → dropped server-side, no phantom press).
+  **Fusion fix (2026-11-22):** one coffee-table press toggled OFF then ON because the laundry
+  locked 1288 ms late **and** its line arrived 1630 ms after central's — past the 1500 ms window,
+  which was measured on arrival only. The window is now applied to **either** RF time (field 3)
+  **or** arrival, so that press fuses; `test_fusion.sh` Run F is the regression guard. The
+  forwarding gate is unchanged (still arrival-based) on purpose — see `DOCs/RF-EVENT-FUSION.md` §7.
   **Current fleet state (2026-10-19, later):** production confirmed **36/36 presses → one FIFO write
   each** (five `n=3` groups, no split groups, no double toggles). Laundry `rx-55d68f` then went
   silent and was believed **RF-deaf after an antenna swap** — that verdict was wrong: the real fault

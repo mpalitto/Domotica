@@ -28,15 +28,19 @@
 # is safe now that every receiver in the fleet speaks v2.
 #
 # Knobs (override via environment or edit here):
-#   FUSION_WINDOW_MS   grouping window, measured on SERVER ARRIVAL time (not on
-#                      the epochs). Repeats within one press are 70-270 ms
-#                      apart, so the spread is quantised in whole repeat
-#                      intervals and a receiver that locks onto a late repeat
-#                      lands far out: field worst case is 914 ms (fridge,
-#                      2026-10-19, three-receiver press). 1500 ms covers that
-#                      with margin while staying below the smallest observed
-#                      gap between separate presses (1.9 s), so two genuine
-#                      presses are never merged into one.
+#   FUSION_WINDOW_MS   same-press window. A duplicate view is fused if it is
+#                      within the window in EITHER time base: the receivers'
+#                      RF timestamps (field 3) OR server arrival. Repeats within
+#                      one press are 70-270 ms apart, so a receiver that locks
+#                      onto a late repeat lands far out: field worst case is
+#                      914 ms (fridge, 2026-10-19) and 1288 ms (laundry,
+#                      2026-11-22). 1500 ms covers those with margin while
+#                      staying below the smallest observed gap between separate
+#                      presses (~1.6 s), so two genuine presses are not merged.
+#                      RF time is the physical quantity (the units' clocks agree
+#                      within a few ms); arrival adds transport jitter, which is
+#                      why both are checked — a late lock can arrive late, and a
+#                      buffered line can arrive next to a later press (§7).
 #   FUSION_ENABLED     1 = use the fusion window instead of the 2 s debounce as
 #                      the forwarding gate for v2 events. Enabled 2026-10-19:
 #                      the whole fleet runs v2.2, no v1 receiver remains.
@@ -173,20 +177,40 @@ process_line() {
     local now; now=$(now_ms)
 
     # 4. Fusion: is this another receiver's view of the press we already have?
-    if [[ -n "$FUSION_KEY" && "$buttID" == "$FUSION_KEY" ]] \
-       && (( now - FUSION_T0 <= FUSION_WINDOW_MS )); then
+    # A duplicate is fused if it is within FUSION_WINDOW_MS in EITHER time base.
+    # RF time (field 3) is the physical quantity: a receiver that locks onto a
+    # later repetition of the same burst stamps a later pulse, and its line can
+    # reach the server later still. On 2026-11-22 the coffee press was 1288 ms
+    # apart in RF time between rf-central and rf-laundry but 1630 ms apart in
+    # arrival, so an arrival-only window split it into two toggles (OFF then
+    # ON). Arrival time still matters for the opposite case: a line buffered for
+    # seconds can arrive next to a later press, and the stale-copy case in §7
+    # relies on the arrival window to stay fused. Checking both is therefore
+    # fusion-biased, which is the safe direction for a light switch.
+    if [[ -n "$FUSION_KEY" && "$buttID" == "$FUSION_KEY" ]]; then
         local where; where="$(receiver_label "$f_recv")"
+        local skew="" is_dup=0
         if (( is_epoch )) && [[ -n "$FUSION_EPOCH" ]]; then
-            local skew=$(( f_ts - FUSION_EPOCH ))
+            skew=$(( f_ts - FUSION_EPOCH ))
             (( skew < 0 )) && skew=$(( -skew ))
-            echo "fusing (recv=$where skew=${skew}ms lag=$(( now - f_ts ))ms n=$(( FUSION_COUNT + 1 )))"
-            FUSION_SEEN="${FUSION_SEEN:+$FUSION_SEEN,}$where@${skew}ms"
-        else
-            echo "fusing (recv=$where legacy-stamp n=$(( FUSION_COUNT + 1 )))"
-            FUSION_SEEN="${FUSION_SEEN:+$FUSION_SEEN,}$where@v1"
+            if (( skew <= FUSION_WINDOW_MS )); then
+                is_dup=1
+            fi
         fi
-        FUSION_COUNT=$(( FUSION_COUNT + 1 ))
-        return 0   # never forward a duplicate view of the same press
+        if (( now - FUSION_T0 <= FUSION_WINDOW_MS )); then
+            is_dup=1
+        fi
+        if (( is_dup )); then
+            if [[ -n "$skew" ]]; then
+                echo "fusing (recv=$where skew=${skew}ms lag=$(( now - f_ts ))ms n=$(( FUSION_COUNT + 1 )))"
+                FUSION_SEEN="${FUSION_SEEN:+$FUSION_SEEN,}$where@${skew}ms"
+            else
+                echo "fusing (recv=$where legacy-stamp n=$(( FUSION_COUNT + 1 )))"
+                FUSION_SEEN="${FUSION_SEEN:+$FUSION_SEEN,}$where@v1"
+            fi
+            FUSION_COUNT=$(( FUSION_COUNT + 1 ))
+            return 0   # never forward a duplicate view of the same press
+        fi
     fi
 
     # A different event: close (and log) the previous group.
